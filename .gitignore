@@ -1,0 +1,8 @@
+bin/
+obj/
+.vs/
+# keluaran self-check (dibuat ulang oleh --selfcheck)
+samples/export.svg
+samples/layout.png
+samples/export-render.png
+samples/selfcheck.txt
