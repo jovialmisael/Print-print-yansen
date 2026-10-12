@@ -2,7 +2,7 @@ bin/
 obj/
 .vs/
 # keluaran self-check (dibuat ulang oleh --selfcheck)
-samples/export.svg
-samples/layout.png
-samples/export-render.png
+samples/export.pdf
+samples/export-render-*.png
+samples/layout-*.png
 samples/selfcheck.txt

@@ -1,15 +1,23 @@
+using System.Diagnostics;
 using System.IO;
+using System.Text;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
-using SharpVectors.Converters;
-using SharpVectors.Renderers.Wpf;
+using Docnet.Core;
+using Docnet.Core.Models;
+using PdfSharp.Drawing;
+using PdfSharp.Pdf;
+using PdfSharp.Pdf.Advanced;
+using PdfSharp.Pdf.IO;
 
 namespace StickerLayout;
 
-// Jalankan: StickerLayout.exe --selfcheck <folder>. Menulis sampel, memuat, menyusun, mengekspor, lalu memeriksa hasilnya.
+// Jalankan: StickerLayout.exe --selfcheck <folder>. Membuat sampel, memuat, menyusun, mengekspor PDF, lalu memeriksa hasilnya.
 public static class SelfCheck
 {
+    const double A4W = 210, A4H = 297, Margin = 10, Gap = 2;
+
     public static int Run(string dir)
     {
         Directory.CreateDirectory(dir);
@@ -17,56 +25,87 @@ public static class SelfCheck
         try
         {
             Samples(dir);
-            var items = new[] { ("circle.png", 3), ("star.png", 3), ("badge.svg", 2), ("heart.svg", 3) }
-                .Select(t => { var s = Loader.Load(Path.Combine(dir, t.Item1), 40, 2); s.Copies = t.Item2; return s; }).ToList();
+            Cut kiss = new(true, 2, 1), die = new(true, 4, 2);
+            var files = new[] { ("circle.png", 6), ("star.jpg", 6), ("badge.svg", 4), ("logo.pdf", 6), ("logo.ai", 4) };
+            List<Sticker> Load() => files.SelectMany(f => Loader.LoadAll(Path.Combine(dir, f.Item1), 40, kiss, die)
+                .Select(s => { s.Copies = f.Item2; return s; })).ToList();
+
+            // Ukur sel grid 2 mm vs 1 mm pada job ±130 stiker (waktu vs pemakaian bahan).
+            double cell0 = Nest.Cell;
+            foreach (double cell in new[] { 2.0, 1.0 })
+            {
+                Nest.Cell = cell;
+                var big = Load();
+                foreach (var s in big) s.Copies *= 5;
+                var sw = Stopwatch.StartNew();
+                var r = Nest.Run(big, A4W, A4H, Margin, Gap, out _);
+                log.Add($"cell {cell} mm: {big.Sum(s => s.Copies)} stiker -> {r.Count} lembar A4, pemakaian {Use(r):P1}, {sw.ElapsedMilliseconds} ms");
+            }
+            Nest.Cell = cell0;
+
+            var items = Load();
             foreach (var s in items)
             {
-                Check(s.CutPath.StartsWith('M'), $"{s.Name}: path potong kosong", log);
-                Check(s.Area > 0, $"{s.Name}: grid kosong", log);
-                log.Add($"{s.Name}: kotak {s.W}x{s.H} mm, area {s.AreaMm2:F0} mm2, off {s.Off:F2}");
+                Check(s.Kiss.StartsWith('M') && s.Die.StartsWith('M'), $"{s.Name}: garis potong kosong");
+                Check(s.DieGeo!.GetArea() > s.KissGeo!.GetArea(), $"{s.Name}: die-cut tidak membungkus kiss-cut");
+                log.Add($"{s.Name}: artwork {s.ArtW:F1}x{s.ArtH:F1} mm, kotak {s.W}x{s.H} mm, vektor={s.Pdf != null}");
             }
+            var pdfItem = items.First(s => s.Name == "logo.pdf");
+            Check(pdfItem.Pdf != null, "logo.pdf tidak dipakai sebagai vektor");
+            // isi PDF: lebar 140 pt (49,39 mm), tinggi 120 pt (42,33 mm), kotak merah di luar CropBox tidak boleh ikut
+            Check(Math.Abs(pdfItem.ArtW - 49.39) < 0.6 && Math.Abs(pdfItem.ArtH - 42.33) < 0.6, $"ukuran asli PDF salah: {pdfItem.ArtW:F2}x{pdfItem.ArtH:F2}");
+            Check(items.First(s => s.Name == "logo.ai").Pdf != null, "logo.ai tidak dibaca sebagai PDF");
 
-            const double cw = 200, ch = 200;
-            var ps = Nest.Run(items, cw, ch, 2, out int failed);
-            Check(failed == 0, $"{failed} stiker tidak muat", log);
-            Check(ps.Count == items.Sum(i => i.Copies), "jumlah tempatan salah", log);
+            // Smooth menutup lekukan bintang: luas naik.
+            var raw = Loader.Load(Path.Combine(dir, "star.jpg"), 0, 40, new Cut(true, 1, 0), new Cut(false, 0, 0));
+            var smooth = Loader.Load(Path.Combine(dir, "star.jpg"), 0, 40, new Cut(true, 1, 4), new Cut(false, 0, 0));
+            log.Add($"star kiss-cut luas: tanpa smooth {raw.KissGeo!.GetArea():F0} mm2, smooth 4 mm {smooth.KissGeo!.GetArea():F0} mm2");
+            Check(smooth.KissGeo!.GetArea() > raw.KissGeo!.GetArea() * 1.01, "smooth tidak mengubah garis");
 
-            // tidak ada sel yang dipakai dua stiker, semua di dalam area kanvas
-            var occ = new Dictionary<(int, int), int>();
-            foreach (var p in ps)
+            var sheets = Nest.Run(items, A4W, A4H, Margin, Gap, out int tooBig);
+            Check(tooBig == 0, $"{tooBig} stiker tidak muat");
+            Check(sheets.Count >= 2, "tidak meluap ke lembar kedua");
+            Check(sheets.Sum(x => x.Count) == items.Sum(s => s.Copies), "jumlah tempatan salah");
+            foreach (var sh in sheets) Check(Nest.Check(sh, A4W, A4H, Margin) == 0, "ada tumpang tindih / keluar margin");
+            log.Add($"susun: {sheets.Sum(x => x.Count)} stiker -> {sheets.Count} lembar A4, pemakaian {Use(sheets):P1}");
+
+            // Uji deteksi tumpang tindih: geser satu stiker ke atas tetangganya.
+            var probe = sheets[0];
+            var (ox, oy) = (probe[1].X, probe[1].Y);
+            (probe[1].X, probe[1].Y) = (probe[0].X, probe[0].Y);
+            Check(Nest.Check(probe, A4W, A4H, Margin) >= 2, "tumpang tindih tidak terdeteksi");
+            (probe[1].X, probe[1].Y) = (ox, oy);
+            Nest.Check(probe, A4W, A4H, Margin);
+
+            var heights = sheets.Select(_ => A4H).ToList();
+            var outPdf = Path.Combine(dir, "export.pdf");
+            var warn = Export.Pdf(outPdf, sheets, A4W, heights);
+            Check(warn.Count == 0, "peringatan export: " + string.Join("; ", warn));
+
+            using (var r = DocLib.Instance.GetDocReader(outPdf, new PageDimensions(1.0)))
+                Check(r.GetPageCount() == sheets.Count, "jumlah halaman != jumlah lembar");
+
+            // Artwork PDF harus tepat di posisinya: titik biru (persegi) dan oranye (lingkaran) pada render export.
+            int si = sheets.FindIndex(x => x.Any(p => p.S == pdfItem));
+            var pp = sheets[si].First(p => p.S == pdfItem);
+            var render = RenderPage(outPdf, si, 4);
+            Save(render, Path.Combine(dir, $"export-render-{si + 1}.png"));
+            var blue = At(render, pp, 70, 60, 4);
+            var orange = At(render, pp, 20, 60, 4);
+            Check(blue.B > 150 && blue.R < 100, $"posisi artwork PDF salah (biru = {blue})");
+            Check(orange.R > 200 && orange.B < 100, $"posisi artwork PDF salah (oranye = {orange})");
+
+            using (var doc = PdfReader.Open(outPdf, PdfDocumentOpenMode.Import))
             {
-                var g = Nest.Rotate(p.S.Grid, p.Rot);
-                int ox = (int)Math.Round((p.X - Nest.Margin) / Nest.Cell), oy = (int)Math.Round((p.Y - Nest.Margin) / Nest.Cell);
-                for (int x = 0; x < g.GetLength(0); x++)
-                    for (int y = 0; y < g.GetLength(1); y++)
-                        if (g[x, y])
-                        {
-                            Check(occ.TryAdd((ox + x, oy + y), 1), "dua stiker menempati sel yang sama", log);
-                            Check(p.X >= Nest.Margin && p.Y >= Nest.Margin && p.X + p.BW <= cw - Nest.Margin && p.Y + p.BH <= ch - Nest.Margin, "stiker keluar area kanvas", log);
-                        }
+                var page = doc.Pages[si];
+                var xo = page.Resources.Elements.GetDictionary("/XObject");
+                Check(xo != null && xo.Elements.Values.Any(v => (v as PdfReference)?.Value is PdfDictionary d && d.Elements.GetName("/Subtype") == "/Form"),
+                    "artwork PDF tidak tertempel sebagai vektor (Form XObject)");
+                var text = Content(page);
+                Check(text.Contains("0 1 0 0 K") && text.Contains("1 0 0 0 K"), "garis potong bukan CMYK magenta/cyan");
             }
-            log.Add($"ditempatkan {ps.Count}, rotasi dipakai: {string.Join(",", ps.Select(p => p.Rot).Distinct())}");
 
-            string svg = Nest.Export(ps, cw, ch, true);
-            File.WriteAllText(Path.Combine(dir, "export.svg"), svg);
-            Check(svg.Contains("id=\"CutContour\"") && svg.Contains("id=\"Print\""), "layer tidak ada", log);
-            Check(svg.Split("<path transform=").Length - 1 == ps.Count, "jumlah path potong != jumlah stiker", log);
-
-            Save(Snapshot(Nest.Sheet(ps, cw, ch, true, null), cw, ch, 4), Path.Combine(dir, "layout.png"));
-            var dg = new FileSvgReader(new WpfDrawingSettings { IncludeRuntime = false, TextAsGeometry = true }).Read(Path.Combine(dir, "export.svg"));
-            log.Add($"export.svg dibaca ulang, bounds {dg.Bounds.Width:F0}x{dg.Bounds.Height:F0}");
-            // SharpVectors mengonversi mm -> px (96 dpi); skala balik agar 1 mm = 4 px
-            double k = 4 * 25.4 / 96;
-            var v = new DrawingVisual();
-            using (var dc = v.RenderOpen())
-            {
-                dc.DrawRectangle(Brushes.White, null, new Rect(0, 0, cw * 4, ch * 4));
-                dc.PushTransform(new ScaleTransform(k, k));
-                dc.DrawDrawing(dg);
-            }
-            var rt = new RenderTargetBitmap((int)(cw * 4), (int)(ch * 4), 96, 96, PixelFormats.Pbgra32);
-            rt.Render(v);
-            Save(rt, Path.Combine(dir, "export-render.png"));
+            Save(Snapshot(Nest.Sheet(sheets[0], A4W, A4H, Margin, null, 0), A4W, A4H, 4), Path.Combine(dir, "layout-1.png"));
             log.Add("OK");
             File.WriteAllLines(Path.Combine(dir, "selfcheck.txt"), log);
             return 0;
@@ -79,9 +118,43 @@ public static class SelfCheck
         }
     }
 
-    static void Check(bool ok, string msg, List<string> log)
+    static void Check(bool ok, string msg)
     {
         if (!ok) throw new Exception(msg);
+    }
+
+    static double Use(List<List<Placed>> sheets) => sheets.Sum(x => x.Sum(p => p.S.AreaMm2)) / (A4W * A4H * sheets.Count);
+
+    static string Content(PdfPage page)
+    {
+        var sb = new StringBuilder();
+        foreach (var item in page.Contents.Elements)
+            if ((item as PdfReference)?.Value is PdfDictionary d && d.Stream != null) sb.Append(Encoding.ASCII.GetString(d.Stream.UnfilteredValue));
+        return sb.ToString();
+    }
+
+    static BitmapSource RenderPage(string pdf, int page, double pxMm)
+    {
+        using var r = DocLib.Instance.GetDocReader(pdf, new PageDimensions(pxMm * 25.4 / 72));
+        using var p = r.GetPageReader(page);
+        int w = p.GetPageWidth(), h = p.GetPageHeight();
+        var px = p.GetImage();
+        for (int i = 0; i < px.Length; i += 4) // latar transparan -> putih
+        {
+            double a = px[i + 3] / 255.0;
+            for (int c = 0; c < 3; c++) px[i + c] = (byte)(px[i + c] * a + 255 * (1 - a));
+            px[i + 3] = 255;
+        }
+        return BitmapSource.Create(w, h, 96, 96, PixelFormats.Bgra32, null, px, w * 4);
+    }
+
+    // Warna render pada titik (pt dari pojok kiri-atas konten PDF) milik stiker yang ditempatkan.
+    static Color At(BitmapSource bmp, Placed p, double xPt, double yPt, double pxMm)
+    {
+        var page = Nest.Xf(p).Transform(new Point(p.S.Off + xPt * 25.4 / 72, p.S.Off + yPt * 25.4 / 72));
+        var c = new byte[4];
+        bmp.CopyPixels(new Int32Rect((int)(page.X * pxMm), (int)(page.Y * pxMm), 1, 1), c, 4, 0);
+        return Color.FromRgb(c[2], c[1], c[0]);
     }
 
     static BitmapSource Snapshot(FrameworkElement el, double w, double h, double k)
@@ -100,31 +173,35 @@ public static class SelfCheck
         return rt;
     }
 
-    static void Save(BitmapSource b, string path)
+    static void Save(BitmapSource b, string path, BitmapEncoder? enc = null)
     {
-        var enc = new PngBitmapEncoder();
+        enc ??= new PngBitmapEncoder();
         enc.Frames.Add(BitmapFrame.Create(b));
         using var fs = File.Create(path);
         enc.Save(fs);
     }
 
+    static BitmapSource Draw(Action<DrawingContext> paint)
+    {
+        var v = new DrawingVisual();
+        using (var dc = v.RenderOpen()) paint(dc);
+        var rt = new RenderTargetBitmap(300, 300, 96, 96, PixelFormats.Pbgra32);
+        rt.Render(v);
+        return rt;
+    }
+
     static void Samples(string dir)
     {
         // circle.png: transparan
-        var v = new DrawingVisual();
-        using (var dc = v.RenderOpen())
+        Save(Draw(dc =>
         {
             dc.DrawEllipse(Brushes.Orange, null, new Point(150, 150), 140, 140);
             dc.DrawEllipse(Brushes.SteelBlue, null, new Point(150, 150), 90, 90);
             dc.DrawEllipse(Brushes.White, null, new Point(150, 150), 40, 40);
-        }
-        var rt = new RenderTargetBitmap(300, 300, 96, 96, PixelFormats.Pbgra32);
-        rt.Render(v);
-        Save(rt, Path.Combine(dir, "circle.png"));
+        }), Path.Combine(dir, "circle.png"));
 
-        // star.png: latar putih buram + lubang putih di tengah
-        v = new DrawingVisual();
-        using (var dc = v.RenderOpen())
+        // star.jpg: latar putih (tanpa alpha) + lubang putih di tengah
+        Save(Draw(dc =>
         {
             dc.DrawRectangle(Brushes.White, null, new Rect(0, 0, 300, 300));
             var pts = Enumerable.Range(0, 10).Select(i =>
@@ -136,18 +213,28 @@ public static class SelfCheck
             using (var c = g.Open()) { c.BeginFigure(pts[0], true, true); c.PolyLineTo(pts.Skip(1).ToList(), true, false); }
             dc.DrawGeometry(Brushes.Crimson, null, g);
             dc.DrawEllipse(Brushes.White, null, new Point(150, 155), 25, 25);
-        }
-        rt = new RenderTargetBitmap(300, 300, 96, 96, PixelFormats.Pbgra32);
-        rt.Render(v);
-        Save(rt, Path.Combine(dir, "star.png"));
+        }), Path.Combine(dir, "star.jpg"), new JpegBitmapEncoder { QualityLevel = 90 });
 
-        // SVG dengan viewBox dan width/height berbeda skala
         File.WriteAllText(Path.Combine(dir, "badge.svg"),
             "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"200\" height=\"120\" viewBox=\"0 0 100 60\">" +
             "<rect x=\"2\" y=\"2\" width=\"96\" height=\"56\" rx=\"12\" fill=\"#2a9d8f\"/>" +
             "<circle cx=\"30\" cy=\"30\" r=\"14\" fill=\"#e9c46a\"/><rect x=\"52\" y=\"20\" width=\"36\" height=\"6\" fill=\"#fff\"/><rect x=\"52\" y=\"34\" width=\"28\" height=\"6\" fill=\"#fff\"/></svg>");
-        File.WriteAllText(Path.Combine(dir, "heart.svg"),
-            "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 100 100\">" +
-            "<path d=\"M50 88 C10 55 5 30 25 15 C40 5 50 20 50 25 C50 20 60 5 75 15 C95 30 90 55 50 88 Z\" fill=\"#e63946\"/></svg>");
+
+        // logo.pdf: vektor CMYK, CropBox (40,60)-(260,250) lebih kecil dari MediaBox 300x300 pt.
+        using (var doc = new PdfDocument())
+        {
+            var page = doc.AddPage();
+            page.Width = XUnit.FromPoint(300);
+            page.Height = XUnit.FromPoint(300);
+            using (var g = XGraphics.FromPdfPage(page))
+            {
+                g.DrawEllipse(new XSolidBrush(XColor.FromCmyk(0, 0.6, 1, 0)), 90, 90, 120, 120);
+                g.DrawRectangle(new XSolidBrush(XColor.FromCmyk(1, 0.4, 0, 0)), 150, 135, 80, 30);
+                g.DrawRectangle(new XSolidBrush(XColor.FromCmyk(0, 1, 1, 0)), 5, 5, 20, 20); // di luar CropBox
+            }
+            page.CropBox = new PdfRectangle(new XPoint(40, 60), new XPoint(260, 250));
+            doc.Save(Path.Combine(dir, "logo.pdf"));
+        }
+        File.Copy(Path.Combine(dir, "logo.pdf"), Path.Combine(dir, "logo.ai"), true); // AI "PDF compatible"
     }
 }

@@ -1,53 +1,118 @@
 <Window x:Class="StickerLayout.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Sticker Layout — Prototype (Profil mesin: Printech)" Width="1280" Height="820">
+        Title="{DynamicResource Title}" Width="1360" Height="860"
+        PreviewKeyDown="Window_KeyDown" Loaded="Window_Loaded">
+    <Window.Resources>
+        <Style x:Key="H" TargetType="TextBlock">
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Margin" Value="0,14,0,4"/>
+        </Style>
+        <Style TargetType="TextBox">
+            <Setter Property="Margin" Value="0,1"/>
+        </Style>
+    </Window.Resources>
     <DockPanel>
-        <ScrollViewer DockPanel.Dock="Left" Width="290" VerticalScrollBarVisibility="Auto">
+        <ScrollViewer DockPanel.Dock="Left" Width="310" VerticalScrollBarVisibility="Auto">
             <StackPanel Margin="10">
-                <Button Content="Tambah gambar (PNG / SVG)…" Click="Add_Click" Padding="6"/>
-                <TextBlock Text="Lebar stiker baru (mm)" Margin="0,8,0,0"/>
-                <TextBox x:Name="WidthBox" Text="50"/>
-                <TextBlock Text="Daftar stiker (nama · jumlah salinan)" Margin="0,10,0,2"/>
+                <DockPanel>
+                    <TextBlock Text="{DynamicResource Lang}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <ComboBox x:Name="LangBox" SelectionChanged="Lang_Changed">
+                        <ComboBoxItem Content="Indonesia" Tag="id" IsSelected="True"/>
+                        <ComboBoxItem Content="English" Tag="en"/>
+                    </ComboBox>
+                </DockPanel>
+
+                <TextBlock Text="{DynamicResource SecFiles}" Style="{StaticResource H}"/>
+                <Button Content="{DynamicResource Add}" Click="Add_Click" Padding="6"/>
+                <TextBlock Text="PDF · AI · CDR · PNG · JPG · SVG" Foreground="#888" FontSize="11"/>
+                <DockPanel Margin="0,6,0,0">
+                    <TextBox x:Name="WidthBox" Text="50" Width="60" DockPanel.Dock="Right"/>
+                    <TextBlock Text="{DynamicResource DefWidth}" VerticalAlignment="Center"/>
+                </DockPanel>
+                <TextBlock Text="{DynamicResource ListHdr}" Margin="0,8,0,2" Foreground="#555"/>
                 <ListBox x:Name="List" Height="170">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
                             <DockPanel>
-                                <TextBox DockPanel.Dock="Right" Width="36" Text="{Binding Copies, UpdateSourceTrigger=PropertyChanged}"/>
-                                <TextBlock Text="{Binding Name}" Margin="0,0,6,0" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                                <TextBox DockPanel.Dock="Right" Width="38" Text="{Binding Copies, UpdateSourceTrigger=PropertyChanged}"/>
+                                <TextBox DockPanel.Dock="Right" Width="52" Margin="4,1" Text="{Binding WidthMm, StringFormat=0.#}"/>
+                                <TextBlock Text="{Binding Name}" Margin="0,0,4,0" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
                             </DockPanel>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
-                <Button Content="Hapus dari daftar" Click="Remove_Click" Margin="0,4,0,0"/>
+                <Button Content="{DynamicResource Remove}" Click="Remove_Click" Margin="0,4,0,0"/>
 
-                <Separator Margin="0,10"/>
-                <Grid>
+                <TextBlock Text="{DynamicResource SecMachine}" Style="{StaticResource H}"/>
+                <ComboBox x:Name="MachineBox" SelectionChanged="Machine_Changed"/>
+                <DockPanel Margin="0,4,0,0">
+                    <TextBox x:Name="MarginBox" Text="10" Width="60" DockPanel.Dock="Right"/>
+                    <TextBlock Text="{DynamicResource MarginLbl}" VerticalAlignment="Center"/>
+                </DockPanel>
+                <Expander Header="{DynamicResource AddMachine}" Margin="0,4,0,0">
+                    <Grid Margin="0,4,0,0">
+                        <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="110"/></Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+                        <TextBlock Text="{DynamicResource MName}" VerticalAlignment="Center"/><TextBox x:Name="NewName" Grid.Column="1"/>
+                        <TextBlock Text="{DynamicResource MMaxW}" Grid.Row="1" VerticalAlignment="Center"/><TextBox x:Name="NewW" Grid.Row="1" Grid.Column="1"/>
+                        <TextBlock Text="{DynamicResource MMaxH}" Grid.Row="2" VerticalAlignment="Center"/><TextBox x:Name="NewH" Grid.Row="2" Grid.Column="1"/>
+                        <TextBlock Text="{DynamicResource MarginLbl}" Grid.Row="3" VerticalAlignment="Center"/><TextBox x:Name="NewMargin" Text="10" Grid.Row="3" Grid.Column="1"/>
+                        <Button Content="{DynamicResource Save}" Click="SaveMachine_Click" Grid.Row="4" Grid.Column="1" Margin="0,4,0,0"/>
+                    </Grid>
+                </Expander>
+
+                <TextBlock Text="{DynamicResource SecPaper}" Style="{StaticResource H}"/>
+                <ComboBox x:Name="PaperBox" SelectionChanged="Paper_Changed"/>
+                <Grid Margin="0,4,0,0">
                     <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="70"/></Grid.ColumnDefinitions>
-                    <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
-                    <TextBlock Text="Lebar kanvas (mm)" Grid.Row="0" VerticalAlignment="Center"/><TextBox x:Name="CanvasW" Text="300" Grid.Row="0" Grid.Column="1" Margin="0,2"/>
-                    <TextBlock Text="Tinggi kanvas (mm)" Grid.Row="1" VerticalAlignment="Center"/><TextBox x:Name="CanvasH" Text="400" Grid.Row="1" Grid.Column="1" Margin="0,2"/>
-                    <TextBlock Text="Offset garis potong (mm)" Grid.Row="2" VerticalAlignment="Center"/><TextBox x:Name="OffsetBox" Text="2" Grid.Row="2" Grid.Column="1" Margin="0,2"/>
-                    <TextBlock Text="Jarak antar stiker (mm)" Grid.Row="3" VerticalAlignment="Center"/><TextBox x:Name="GapBox" Text="2" Grid.Row="3" Grid.Column="1" Margin="0,2"/>
+                    <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+                    <TextBlock Text="{DynamicResource PaperW}" VerticalAlignment="Center"/><TextBox x:Name="CanvasW" Text="297" Grid.Column="1"/>
+                    <TextBlock Text="{DynamicResource PaperH}" Grid.Row="1" VerticalAlignment="Center"/><TextBox x:Name="CanvasH" Text="420" Grid.Row="1" Grid.Column="1"/>
+                    <Button Content="{DynamicResource PaperRot}" Click="PaperRot_Click" Grid.Row="2" Grid.Column="1" Margin="0,2,0,0"/>
                 </Grid>
-                <CheckBox x:Name="RegMarks" Content="Tanda registrasi di 4 sudut" IsChecked="True" Margin="0,6,0,0" Click="Refresh_Click"/>
 
-                <Button Content="Susun otomatis" Click="Nest_Click" Padding="6" Margin="0,12,0,0" FontWeight="Bold"/>
-                <Button Content="Compact (pangkas tinggi kanvas)" Click="Compact_Click" Padding="4" Margin="0,4,0,0"/>
-                <Button Content="Putar terpilih 90°" Click="Rotate_Click" Padding="4" Margin="0,4,0,0"/>
-                <Button Content="Hapus terpilih dari kanvas" Click="DeletePlaced_Click" Padding="4" Margin="0,4,0,0"/>
-                <Button Content="Export SVG…" Click="Export_Click" Padding="6" Margin="0,12,0,0" FontWeight="Bold"/>
-                <TextBlock x:Name="Status" TextWrapping="Wrap" Margin="0,12,0,0" Foreground="#444"/>
-                <TextBlock TextWrapping="Wrap" Margin="0,12,0,0" Foreground="#888" FontSize="11"
-                           Text="Seret stiker di kanvas untuk menggeser. Garis magenta = garis potong (layer CutContour)."/>
+                <TextBlock Text="{DynamicResource SecCut}" Style="{StaticResource H}"/>
+                <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="60"/><ColumnDefinition Width="60"/></Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+                    <TextBlock Text="{DynamicResource Offset}" Grid.Column="1" Margin="2,0" Foreground="#555"/>
+                    <TextBlock Text="{DynamicResource Smooth}" Grid.Column="2" Margin="2,0" Foreground="#555"/>
+                    <CheckBox x:Name="KissOn" Content="{DynamicResource Kiss}" IsChecked="True" Grid.Row="1" VerticalAlignment="Center" Foreground="#EC008C"/>
+                    <TextBox x:Name="KissOff" Text="2" Grid.Row="1" Grid.Column="1" Margin="2,1"/>
+                    <TextBox x:Name="KissSm" Text="1" Grid.Row="1" Grid.Column="2" Margin="2,1"/>
+                    <CheckBox x:Name="DieOn" Content="{DynamicResource Die}" Grid.Row="2" VerticalAlignment="Center" Foreground="#00AEEF"/>
+                    <TextBox x:Name="DieOff" Text="4" Grid.Row="2" Grid.Column="1" Margin="2,1"/>
+                    <TextBox x:Name="DieSm" Text="2" Grid.Row="2" Grid.Column="2" Margin="2,1"/>
+                </Grid>
+                <TextBlock Text="{DynamicResource CutUnit}" Foreground="#888" FontSize="11" TextWrapping="Wrap"/>
+                <DockPanel Margin="0,4,0,0">
+                    <TextBox x:Name="GapBox" Text="2" Width="60" DockPanel.Dock="Right"/>
+                    <TextBlock Text="{DynamicResource Gap}" VerticalAlignment="Center"/>
+                </DockPanel>
+
+                <Button Content="{DynamicResource Nest}" Click="Nest_Click" Padding="6" Margin="0,14,0,0" FontWeight="Bold"/>
+                <Button Content="{DynamicResource Compact}" Click="Compact_Click" Padding="4" Margin="0,4,0,0"/>
+                <Button Content="{DynamicResource RotSel}" Click="Rotate_Click" Padding="4" Margin="0,4,0,0"/>
+                <Button Content="{DynamicResource DelSel}" Click="DeletePlaced_Click" Padding="4" Margin="0,4,0,0"/>
+                <Button Content="{DynamicResource Export}" Click="Export_Click" Padding="6" Margin="0,14,0,0" FontWeight="Bold"/>
+                <TextBlock x:Name="Status" TextWrapping="Wrap" Margin="0,12,0,0" Foreground="#333"/>
+                <TextBlock Text="{DynamicResource Hint}" TextWrapping="Wrap" Margin="0,10,0,0" Foreground="#888" FontSize="11"/>
             </StackPanel>
         </ScrollViewer>
-        <Slider DockPanel.Dock="Top" Minimum="1" Maximum="6" Value="2" ValueChanged="Zoom_Changed" Margin="10,6" ToolTip="Zoom"/>
-        <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" Background="#DDD">
-            <Border x:Name="Host" Margin="20" HorizontalAlignment="Left" VerticalAlignment="Top" Background="White" BorderBrush="#888" BorderThickness="0.5"
-                    MouseLeftButtonDown="Host_Down" MouseMove="Host_Move" MouseLeftButtonUp="Host_Up">
-                <Border.LayoutTransform><ScaleTransform x:Name="Zoom" ScaleX="2" ScaleY="2"/></Border.LayoutTransform>
-            </Border>
+
+        <DockPanel DockPanel.Dock="Top" Margin="10,6">
+            <Button Content="{DynamicResource Fit}" Click="Fit_Click" DockPanel.Dock="Right" Padding="10,2"/>
+            <TextBlock x:Name="ZoomText" DockPanel.Dock="Right" Width="50" Margin="0,0,8,0" VerticalAlignment="Center" TextAlignment="Right"/>
+            <Slider x:Name="ZoomSlider" Minimum="10" Maximum="400" Value="50" ValueChanged="Zoom_Changed" VerticalAlignment="Center"/>
+        </DockPanel>
+        <ScrollViewer x:Name="View" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" Background="#DDD" PreviewMouseWheel="View_Wheel">
+            <ItemsControl x:Name="Sheets" Background="Transparent"
+                          MouseLeftButtonDown="Sheets_Down" MouseMove="Sheets_Move" MouseLeftButtonUp="Sheets_Up">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+            </ItemsControl>
         </ScrollViewer>
     </DockPanel>
 </Window>
