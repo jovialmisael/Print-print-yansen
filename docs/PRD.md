@@ -1,6 +1,6 @@
 # PRD — Printech (Layout Stiker Print & Cut)
 
-Status: Draf 2 · Tanggal: 2026-10-13 · Nama "Printech" masih sementara.
+Status: Draf 2 · Tanggal: 2026-10-13 · Nama sementara: "Printech" (dikonfirmasi 2026-10-13).
 
 ## 1. Tujuan
 Ini alat internal toko. Operator mengubah file dari customer menjadi layout stiker yang siap dicetak dan dipotong. Layout harus hemat bahan dan warnanya akurat.
@@ -58,12 +58,11 @@ Tahap sekarang: prototipe → cek kualitas → uji oleh operator. Status "produc
 - Warna di layar hanya preview. Akurasi warna dijaga di file export.
 
 ## 8. Pertanyaan terbuka
-1. Ejaan nama software: "Printech" atau "Printec"?
-2. Setelah export, file dibuka di aplikasi apa (CorelDRAW + Cutting Master 5?), format apa yang diterima, dan garis potong dikenali lewat warna atau layer apa?
-3. File format reg mark milik operator (akan dikirim menyusul).
-4. Ukuran media yang dipakai dan margin printer. Juga offset, jarak antar-stiker, dan bleed standar toko.
-5. Volume order harian dan spesifikasi PC operator.
-6. Model mesin yang dipakai: CE7000-40/-60/-130/-160 dan FCX2000-60VC/-120VC/-180VC.
+1. Setelah export, file dibuka di aplikasi apa (CorelDRAW + Cutting Master 5?), format apa yang diterima, dan garis potong dikenali lewat warna atau layer apa?
+2. File format reg mark milik operator (akan dikirim menyusul).
+3. Ukuran media yang dipakai dan margin printer. Juga offset, jarak antar-stiker, dan bleed standar toko.
+4. Volume order harian dan spesifikasi PC operator.
+5. Model mesin yang dipakai: CE7000-40/-60/-130/-160 dan FCX2000-60VC/-120VC/-180VC.
 
 ## 9. Checklist uji operator
 1. Tambahkan file CDR. Apakah CorelDRAW terbuka dan desainnya ikut masuk?
