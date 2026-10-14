@@ -1,14 +1,11 @@
 using System.Globalization;
 using System.IO;
 using System.Text;
-using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using BitmapToVector;
-using Docnet.Core;
-using Docnet.Core.Models;
 using PdfSharp.Pdf.IO;
 using SharpVectors.Converters;
 using SharpVectors.Renderers.Wpf;
@@ -33,7 +30,8 @@ public class Sticker
     public double Off, ArtW, ArtH;               // posisi & ukuran artwork di dalam kotak (mm)
     public Rect Full;                            // seluruh sumber (halaman PDF / gambar penuh) dalam koordinat kotak (mm)
     public double AreaMm2;                       // luas di dalam garis potong terluar
-    public BitmapSource Preview = null!;         // artwork yang sudah di-crop, untuk layar
+    public BitmapSource Preview { get; set; } = null!; // artwork yang sudah di-crop, untuk layar
+    public string HText => $"× {ArtH:0.#} mm";        // tinggi artwork di daftar desain
     public string Kiss = "", Die = "";           // path SVG garis potong (mm, koordinat kotak)
     public bool[,] Grid = null!;                 // hunian sel nesting dari garis terluar [x,y]
     public int Area;
@@ -67,7 +65,7 @@ public static class Loader
         var pdf = PdfOf(path);
         int pages = 1;
         if (pdf != null)
-            using (var r = DocLib.Instance.GetDocReader(pdf, new PageDimensions(1.0))) pages = r.GetPageCount();
+            using (var r = new Pdfium(pdf)) pages = r.Pages;
         var res = new List<Sticker>();
         for (int i = 0; i < pages; i++) res.Add(Load(path, i, pdf != null ? 0 : defWidthMm, kiss, die, pages > 1));
         return res;
@@ -148,15 +146,15 @@ public static class Loader
     // PDFium merender CropBox; PDFsharp menempel MediaBox. Kembalikan posisi MediaBox relatif terhadap render.
     static (BitmapSource bmp, double nat, Rect media, bool vector) RenderPdf(string pdf, int page)
     {
-        double wPt, hPt;
-        using (var r = DocLib.Instance.GetDocReader(pdf, new PageDimensions(1.0)))
-        using (var p = r.GetPageReader(page)) { wPt = p.GetPageWidth(); hPt = p.GetPageHeight(); }
-        double pxMm = Math.Min(ViewPxMm, 4000 / (Math.Max(wPt, hPt) / Pt)), scale = pxMm / Pt;
-        using var r2 = DocLib.Instance.GetDocReader(pdf, new PageDimensions(scale));
-        using var p2 = r2.GetPageReader(page);
-        int w = p2.GetPageWidth(), h = p2.GetPageHeight();
-        var bmp = BitmapSource.Create(w, h, 96, 96, PixelFormats.Bgra32, null, p2.GetImage(), w * 4);
-        bmp.Freeze();
+        BitmapSource bmp;
+        double pxMm, scale;
+        using (var r = new Pdfium(pdf))
+        {
+            var (wPt, hPt) = r.SizePt(page);
+            pxMm = Math.Min(ViewPxMm, 4000 / (Math.Max(wPt, hPt) / Pt)); // batas 4000 px agar memori tetap kecil
+            scale = pxMm / Pt;
+            bmp = r.Render(page, scale);
+        }
         try
         {
             using var doc = PdfReader.Open(pdf, PdfDocumentOpenMode.Import);
@@ -318,50 +316,12 @@ public static class Corel
         if (cache.TryGetValue(cdr, out var done) && File.Exists(done)) return done;
         var t = Type.GetTypeFromProgID("CorelDRAW.Application") ?? throw new InvalidOperationException(Lang.T("NoCorel"));
         dynamic app = Activator.CreateInstance(t)!;
-        var pdf = Path.Combine(Path.GetTempPath(), App.Brand, Guid.NewGuid() + ".pdf");
+        var pdf = Path.Combine(App.Temp, Guid.NewGuid() + ".pdf");
         Directory.CreateDirectory(Path.GetDirectoryName(pdf)!);
         dynamic doc = app.OpenDocument(cdr);
         try { doc.PublishToPDF(pdf); }
         finally { doc.Close(); }
         return cache[cdr] = pdf;
-    }
-}
-
-public record Machine(string Name, double MaxW, double MaxH, double Margin)
-{
-    public override string ToString() => Name;
-}
-
-public static class Machines
-{
-    static readonly string FilePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), App.Brand, "machines.json");
-
-    // Area potong dari spesifikasi Graphtec. Margin 10 mm = ruang reg mark Cutting Master (Unverified, sesuaikan per mesin).
-    static List<Machine> Defaults() =>
-    [
-        new("Graphtec CE7000-40", 375, 50000, 10),
-        new("Graphtec CE7000-60", 603, 50000, 10),
-        new("Graphtec CE7000-130", 1270, 50000, 10),
-        new("Graphtec CE7000-160", 1524, 50000, 10),
-        new("Graphtec FCX2000-60VC", 610, 920, 10),
-        new("Graphtec FCX2000-120VC", 1200, 920, 10),
-        new("Graphtec FCX2000-180VC", 1800, 920, 10),
-    ];
-
-    public static List<Machine> Load()
-    {
-        try
-        {
-            if (File.Exists(FilePath)) return JsonSerializer.Deserialize<List<Machine>>(File.ReadAllText(FilePath)) ?? Defaults();
-        }
-        catch (Exception) { File.Copy(FilePath, FilePath + ".bak", true); } // file rusak disimpan, bukan ditimpa diam-diam
-        return Defaults();
-    }
-
-    public static void Save(List<Machine> list)
-    {
-        Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
-        File.WriteAllText(FilePath, JsonSerializer.Serialize(list, new JsonSerializerOptions { WriteIndented = true }));
     }
 }
 
@@ -505,7 +465,7 @@ public static class Nest
         return new TransformGroup { Children = { new RotateTransform(p.Rot), new TranslateTransform(p.X + tx, p.Y + ty) } };
     }
 
-    static readonly Brush KissBrush = Frozen("#EC008C"), DieBrush = Frozen("#00AEEF");
+    static readonly Brush KissBrush = Frozen("#EC008C"), DieBrush = Frozen("#00AEEF"), SelBrush = Frozen("#4A90FF");
     static Brush Frozen(string c) { var b = (Brush)new BrushConverter().ConvertFromString(c)!; b.Freeze(); return b; }
 
     // Satuan kanvas = mm. Tag kanvas = indeks lembar, Tag stiker = Placed.
@@ -533,7 +493,7 @@ public static class Nest
             if (p.Bad || p == sel)
                 c.Children.Add(new System.Windows.Shapes.Rectangle
                 {
-                    Width = s.W, Height = s.H, Stroke = p.Bad ? Brushes.Red : Brushes.DodgerBlue, StrokeThickness = p.Bad ? 0.8 : 0.6,
+                    Width = s.W, Height = s.H, Stroke = p.Bad ? Brushes.Red : SelBrush, StrokeThickness = p.Bad ? 0.8 : 0.6,
                     StrokeDashArray = p.Bad ? null : [3, 2], IsHitTestVisible = false
                 });
             root.Children.Add(c);

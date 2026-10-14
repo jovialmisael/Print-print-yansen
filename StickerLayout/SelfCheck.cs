@@ -4,8 +4,6 @@ using System.Text;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
-using Docnet.Core;
-using Docnet.Core.Models;
 using PdfSharp.Drawing;
 using PdfSharp.Pdf;
 using PdfSharp.Pdf.Advanced;
@@ -43,7 +41,9 @@ public static class SelfCheck
             }
             Nest.Cell = cell0;
 
+            long mem0 = GC.GetTotalMemory(true);
             var items = Load();
+            log.Add($"memori: managed +{(GC.GetTotalMemory(true) - mem0) / 1048576.0:F1} MB untuk {items.Count} desain, total managed {GC.GetTotalMemory(true) / 1048576.0:F0} MB, working set {Environment.WorkingSet / 1048576} MB");
             foreach (var s in items)
             {
                 Check(s.Kiss.StartsWith('M') && s.Die.StartsWith('M'), $"{s.Name}: garis potong kosong");
@@ -82,8 +82,8 @@ public static class SelfCheck
             var warn = Export.Pdf(outPdf, sheets, A4W, heights);
             Check(warn.Count == 0, "peringatan export: " + string.Join("; ", warn));
 
-            using (var r = DocLib.Instance.GetDocReader(outPdf, new PageDimensions(1.0)))
-                Check(r.GetPageCount() == sheets.Count, "jumlah halaman != jumlah lembar");
+            using (var r = new Pdfium(outPdf))
+                Check(r.Pages == sheets.Count, "jumlah halaman != jumlah lembar");
 
             // Artwork PDF harus tepat di posisinya: titik biru (persegi) dan oranye (lingkaran) pada render export.
             int si = sheets.FindIndex(x => x.Any(p => p.S == pdfItem));
@@ -135,10 +135,11 @@ public static class SelfCheck
 
     static BitmapSource RenderPage(string pdf, int page, double pxMm)
     {
-        using var r = DocLib.Instance.GetDocReader(pdf, new PageDimensions(pxMm * 25.4 / 72));
-        using var p = r.GetPageReader(page);
-        int w = p.GetPageWidth(), h = p.GetPageHeight();
-        var px = p.GetImage();
+        using var r = new Pdfium(pdf);
+        var src = r.Render(page, pxMm * 25.4 / 72);
+        int w = src.PixelWidth, h = src.PixelHeight;
+        var px = new byte[w * h * 4];
+        src.CopyPixels(px, w * 4, 0);
         for (int i = 0; i < px.Length; i += 4) // latar transparan -> putih
         {
             double a = px[i + 3] / 255.0;
@@ -221,6 +222,8 @@ public static class SelfCheck
             "<circle cx=\"30\" cy=\"30\" r=\"14\" fill=\"#e9c46a\"/><rect x=\"52\" y=\"20\" width=\"36\" height=\"6\" fill=\"#fff\"/><rect x=\"52\" y=\"34\" width=\"28\" height=\"6\" fill=\"#fff\"/></svg>");
 
         // logo.pdf: vektor CMYK, CropBox (40,60)-(260,250) lebih kecil dari MediaBox 300x300 pt.
+        // Dibuat sekali saja: PDFsharp menulis tanggal/ID baru tiap kali, file sampel di git jadi berubah terus.
+        if (!File.Exists(Path.Combine(dir, "logo.pdf")))
         using (var doc = new PdfDocument())
         {
             var page = doc.AddPage();

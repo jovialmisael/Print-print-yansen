@@ -14,7 +14,7 @@ Tahap sekarang: prototipe → cek kualitas → uji oleh operator. Status "produc
 ## 3. Alur
 1. Customer menyerahkan file: 80% CorelDRAW & PDF, 20% AI & PNG/JPG. SVG jarang. Barang fisik belum diterima untuk cutting.
 2. Operator menambahkan file. Aplikasi membuat garis kiss-cut dan die-cut secara otomatis.
-3. Operator mengatur lebar dan jumlah per desain, ukuran kertas, dan mesin, lalu menjalankan "Susun otomatis". Jika satu lembar penuh, lembar berikutnya dibuat otomatis.
+3. Operator mengatur lebar dan jumlah per desain, ukuran kertas, dan margin tepi, lalu menjalankan "Susun otomatis". Jika satu lembar penuh, lembar berikutnya dibuat otomatis.
 4. Operator mengedit hasil susunan bila perlu, lalu export ke PDF.
 5. PDF dibuka di CorelDRAW atau Illustrator. Reg mark dan pengiriman ke mesin potong dilakukan lewat Cutting Master 5 (Graphtec), dengan garis potong dipilih berdasarkan warna.
 
@@ -25,19 +25,23 @@ Tahap sekarang: prototipe → cek kualitas → uji oleh operator. Status "produc
 | F2 | Crop otomatis ke batas artwork. PDF memakai ukuran asli. Lebar dan jumlah bisa diatur per desain | Ada |
 | F3 | Garis kiss-cut dan die-cut, masing-masing dengan offset dan penghalus (smooth) sendiri | Ada |
 | F4 | Kertas: preset A0–A6, SRA3, SRA4, custom, dan tombol putar orientasi | Ada |
-| F5 | Profil mesin Graphtec CE7000 dan FCX2000, operator bisa menambah sendiri. Muncul peringatan bila kertas lebih besar dari area potong | Ada |
+| F5 | Margin tepi kertas bisa diatur (area kosong untuk reg mark/printer) | Ada |
 | F6 | Susun otomatis ke banyak lembar; lembar baru dibuat otomatis | Ada |
 | F7 | Edit hasil susunan: seret, putar 90°, hapus, tombol Delete/R/panah. Muncul peringatan bila tumpang tindih atau keluar margin | Ada |
-| F8 | Zoom ala Word: Ctrl+roda, persen, tombol "Pas layar" | Ada |
+| F8 | Zoom ala Word: Ctrl+roda (titik di bawah kursor tetap), persen, tombol "Pas layar". Alat Hand/Zoom, tahan Spasi atau tombol tengah mouse untuk geser tampilan | Ada |
 | F9 | Export PDF: artwork tetap vektor dengan warna asli. Kiss-cut = magenta 100%, die-cut = cyan 100% (CMYK) | Ada |
 | F10 | Bahasa UI: Indonesia dan English | Ada |
+| F11 | UI gaya Photoshop: tema gelap, menu, options bar, batang alat, panel lipat (Desain dengan thumbnail, Pilihan, Kertas, Garis potong), status bar dengan meter bahan dan peringatan, drag & drop file, file langsung disusun saat ditambahkan | Ada |
 
 ## 5. Keputusan
 - **Platform:** Windows, C#/.NET 10, WPF.
-- **Reg mark:** tidak dibuat oleh aplikasi. Reg mark dibuat oleh Cutting Master 5 di CorelDRAW/Illustrator, yang mendukung FCX2000 dan CE7000. Aplikasi hanya menyisakan margin per mesin (default 10 mm, Unverified).
+- **Reg mark:** tidak dibuat oleh aplikasi. Reg mark dibuat oleh Cutting Master 5 di CorelDRAW/Illustrator, yang mendukung FCX2000 dan CE7000. Aplikasi hanya menyisakan margin tepi kertas (default 10 mm, Unverified).
+- **Batas aplikasi** (keputusan leader proyek, 2026-10-14): aplikasi hanya membuat layout. Pengaturan dan urusan mesin tetap dikerjakan operator; profil mesin dihapus dari aplikasi.
 - **Cutting Master 5:** bisa mengatur kondisi potong, urutan, dan potong/tidak per warna atau per layer.
 - **Export:** PDF menggantikan SVG dari v1. Alasannya: vektor dan CMYK tetap terjaga, dan satu file bisa berisi banyak halaman.
 - **Nesting:** greedy first-fit di grid 2 mm. Pada uji 130 stiker, grid 1 mm 5× lebih lambat dengan jumlah lembar yang sama.
+- **Ringan:** render tampilan lewat CPU, bukan GPU. Diukur: RAM 118–134 MB (lewat GPU 467 MB, sebagian besar driver grafis), CPU saat diam 0%, jendela muncul ±2 detik. Ganti zoom 0,1–0,4 detik CPU.
+- **Aman:** tanpa koneksi jaringan. File asli customer hanya dibaca. Yang ditulis hanya PDF export (lokasi dipilih operator) dan folder temp milik aplikasi, yang dihapus saat aplikasi ditutup. Error tak terduga tampil sebagai pesan, aplikasi tetap jalan. PDFium versi terbaru (build 8100, 2026) dipakai untuk membaca PDF customer.
 - **Tidak dibangun** (sesuai jawaban Anda): hide copy, magic eraser, background remover, simpan proyek, dan reg mark buatan aplikasi.
 
 ## 6. Dependensi dan lisensi
@@ -45,7 +49,7 @@ Tahap sekarang: prototipe → cek kualitas → uji oleh operator. Status "produc
 |---|---|---|
 | SharpVectors.Wpf 1.8.6 | Membaca SVG | BSD-3 |
 | BitmapToVector 1.16.3 | Potrace, untuk garis potong | GPL-3.0. Aman untuk pemakaian internal; jangan didistribusikan ke luar perusahaan |
-| Docnet.Core 2.6.0 | Render PDF/AI (PDFium) | MIT |
+| bblanchon.PDFium.Win32 157.0.8100 | Render PDF/AI (PDFium, hanya binary Windows) | Apache-2.0 |
 | PDFsharp 6.2.4 | Menulis PDF | MIT |
 
 ## 7. Batasan yang diketahui
@@ -62,7 +66,6 @@ Tahap sekarang: prototipe → cek kualitas → uji oleh operator. Status "produc
 2. File format reg mark milik operator (akan dikirim menyusul).
 3. Ukuran media yang dipakai dan margin printer. Juga offset, jarak antar-stiker, dan bleed standar toko.
 4. Volume order harian dan spesifikasi PC operator.
-5. Model mesin yang dipakai: CE7000-40/-60/-130/-160 dan FCX2000-60VC/-120VC/-180VC.
 
 ## 9. Checklist uji operator
 1. Tambahkan file CDR. Apakah CorelDRAW terbuka dan desainnya ikut masuk?

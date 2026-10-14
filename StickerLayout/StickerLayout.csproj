@@ -9,8 +9,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="bblanchon.PDFium.Win32" Version="157.0.8100" />
     <PackageReference Include="BitmapToVector" Version="1.16.3" />
-    <PackageReference Include="Docnet.Core" Version="2.6.0" />
     <PackageReference Include="PDFsharp" Version="6.2.4" />
     <PackageReference Include="SharpVectors.Wpf" Version="1.8.6" />
   </ItemGroup>

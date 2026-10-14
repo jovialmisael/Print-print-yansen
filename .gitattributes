@@ -1,0 +1,7 @@
+# file desain jangan diubah akhir barisnya oleh git (PDF rusak bila CRLF)
+*.pdf binary
+*.ai binary
+*.cdr binary
+*.png binary
+*.jpg binary
+*.jpeg binary
