@@ -149,6 +149,16 @@ Adobe menegaskan pengaturan tampilan ini tidak memengaruhi resolusi output.
 
 Untuk stiker, menghapus elemen biasanya cukup dengan membuatnya transparan. Inpainting hanya perlu bila elemen itu menumpuk di atas artwork lain.
 
+## 11. Merapikan gambar untuk stiker (riset umum, 2026-10-14)
+Operator AP 55 merapikan gambar di Photoshop dan langkah ini lama. Langkah yang umum dilakukan percetakan stiker:
+1. **Cek resolusi:** target 300 ppi pada ukuran cetak; lebar piksel ÷ 300 = lebar stiker maksimal dalam inci. Memperbesar gambar kecil hanya perkiraan, walau dengan AI.
+2. **Hapus latar:** latar polos cukup dengan Magic Wand/Quick Selection plus toleransi; latar rumit memakai Remove Background (AI), Pen Tool, atau Select and Mask.
+3. **Rapikan tepi:** perluas atau kikis seleksi 1–2 px, atau Layer > Matting > Defringe 1–2 px, untuk membuang halo. Cek di latar terang dan gelap.
+4. **Buang sisa piksel dan elemen tidak perlu** secara manual pada zoom besar.
+5. **Simpan PNG transparan, trim area kosong**, lalu cek di ukuran cetak sebenarnya.
+
+Pemetaan ke Printech: langkah 5 (trim, offset/border, ukuran mm) sudah otomatis. Langkah 1 = angka dpi (F12). Langkah 2–4 = jendela Rapikan gambar (F15): hapus latar otomatis dari warna tepi, penghapus klik, kikis tepi 0–3 px. Hapus latar foto dengan AI dan upscale ditunda (lihat bagian 9 untuk pilihan model dan lisensinya).
+
 ## Sumber
 - **Reg mark:**
   - Graphtec: [ARMS](https://www.graphteccorp.com/cutting/arms/), [Cutting Master 5](https://www.graphteccorp.com/cutting/cm5/), [manual CM5](https://mygraphtec.jp/site_download/cm5/data/CM5_Manual_ENG.pdf), [manual FC8000](https://www.manualslib.com/manual/950580/Graphtec-Fc8000-Series.html?page=103)
@@ -169,4 +179,5 @@ Untuk stiker, menghapus elemen biasanya cukup dengan membuatnya transparan. Inpa
   - PDF: [PDFtoImage](https://github.com/sungaila/PDFtoImage), [Docnet](https://github.com/GowenGit/docnet), [PDFsharp format gambar](https://docs.pdfsharp.net/PDFsharp/Topics/Bitmap-Images/Formats.html)
   - AI: [Adobe – file AI](https://www.adobe.com/creativecloud/file-types/image/vector/ai-file.html)
   - CDR: [libcdr](https://github.com/LibreOffice/libcdr), [CorelDRAW PublishToPDF](https://community.coreldraw.com/sdk/api/draw/19/m/document.publishtopdf), [CorelDRAW OpenDocument](https://community.coreldraw.com/sdk/api/draw/18/m/application.opendocument)
+- **Merapikan gambar untuk stiker:** [Sticker it – 6 cara hapus latar](https://www.stickerit.co/blog/remove-background-photoshop), [4over4 – foto jadi stiker](https://www.4over4.com/guide/how-to-turn-a-photo-into-a-sticker), [Kadsticky](https://kadsticky.com/blogs/news/how-to-remove-background-from-an-image-for-sticker-printing), [OZ Sticker Printing](https://www.ozstickerprinting.com/blog/blurry-ai-sticker-designs-fix-it-fast), [DTF Ghost – tepi](https://dtfghost.com/blogs/news/how-to-fix-edges-in-photoshop-for-dtf-printing), [Adobe – decrease fringe](https://helpx.adobe.com/photoshop/desktop/make-selections/refine-modify-selections/decrease-fringe-on-selection.html), [Photoshop Training Channel – Defringe](https://photoshoptrainingchannel.com/tips/removing-edge-halos-defringe/), [Kumparan – hapus background rapi](https://kumparan.com/how-to-tekno/cara-menghapus-background-di-photoshop-dengan-rapi-1xOBC1u6vjK)
 - **Background remover dan eraser:** [rembg](https://github.com/danielgatis/rembg), [RMBG-1.4](https://huggingface.co/briaai/RMBG-1.4), [BiRefNet](https://github.com/ZhengPeng7/BiRefNet), [ONNX Runtime](https://github.com/microsoft/onnxruntime), [OpenCvSharp](https://github.com/shimat/opencvsharp), [Windows Image Object Erase](https://learn.microsoft.com/en-us/windows/ai/apis/image-object-erase), [Photoshop Magic Eraser](https://helpx.adobe.com/photoshop/using/tool-techniques/magic-eraser-tool.html), [LaMa ONNX](https://huggingface.co/Carve/LaMa-ONNX)

@@ -24,18 +24,21 @@ public class Sticker
     public int Page;
     public string? Pdf;                          // PDF yang ditempel vektor saat export (PDF/AI asli atau hasil konversi CDR)
     public byte[] Raster = [];                   // gambar yang ditempel saat export bila bukan vektor
+    public byte[]? Edited;                       // PNG hasil "Rapikan gambar"; dipakai menggantikan file asli
+    public bool CanClean => Pdf == null;         // vektor (PDF/AI/CDR) tidak dirapikan agar warna CMYK tetap utuh
     public double LoadedW;
     public Cut LoadedKiss = null!, LoadedDie = null!;
     public double W, H;                          // kotak (mm), kelipatan Nest.Cell
     public double Off, ArtW, ArtH;               // posisi & ukuran artwork di dalam kotak (mm)
     public Rect Full;                            // seluruh sumber (halaman PDF / gambar penuh) dalam koordinat kotak (mm)
     public double AreaMm2;                       // luas di dalam garis potong terluar
-    public BitmapSource Preview { get; set; } = null!; // artwork yang sudah di-crop, untuk layar
+    public BitmapSource Preview { get; set; } = null!; // artwork yang sudah di-crop, salinan kecil untuk layar
+    public int PxW;                                     // lebar artwork dalam piksel asli (untuk dpi)
     public string HText => $"× {ArtH:0.#} mm";        // tinggi artwork di daftar desain
     // Resolusi cetak untuk desain yang ditempel sebagai gambar. Target riset 300 ppi; 150 = batas kasar,
     // sesuaikan setelah melihat hasil cetak Develop.
     public const double MinDpi = 150;
-    public double? Dpi => Pdf == null && WidthMm > 0 ? Preview.PixelWidth * 25.4 / WidthMm : null;
+    public double? Dpi => Pdf == null && WidthMm > 0 ? PxW * 25.4 / WidthMm : null;
     public string DpiText => Dpi is { } d ? $"{d:0} dpi" : "";
     public bool LowDpi => Dpi < MinDpi;
     public string Kiss = "", Die = "";           // path SVG garis potong (mm, koordinat kotak)
@@ -85,11 +88,11 @@ public static class Loader
     };
 
     // Semua input -> bitmap penuh -> crop ke konten -> mask -> garis kiss/die (dilasi + closing) -> Potrace.
-    public static Sticker Load(string path, int page, double widthMm, Cut kiss, Cut die, bool multiPage = false)
+    public static Sticker Load(string path, int page, double widthMm, Cut kiss, Cut die, bool multiPage = false, byte[]? edited = null)
     {
         var ext = Path.GetExtension(path).ToLowerInvariant();
         var s = new Sticker { Source = path, Page = page, Name = Path.GetFileName(path) + (multiPage ? $" p{page + 1}" : "") };
-        var pdf = PdfOf(path);
+        var pdf = edited == null ? PdfOf(path) : null;
         BitmapSource full;
         double nat = double.NaN;                 // mm per px pada ukuran asli (hanya PDF)
         Rect media;                              // area yang digambar saat export, px relatif terhadap bitmap
@@ -98,10 +101,11 @@ public static class Loader
             (full, nat, media, bool vector) = RenderPdf(pdf, page);
             if (vector) s.Pdf = pdf;
         }
-        else if (ext == ".svg") { full = RenderSvg(path, widthMm); s.Raster = Png(full); media = new Rect(0, 0, full.PixelWidth, full.PixelHeight); }
-        else if (ext is ".png" or ".jpg" or ".jpeg")
+        else if (edited == null && ext == ".svg") { full = RenderSvg(path, widthMm); s.Raster = Png(full); media = new Rect(0, 0, full.PixelWidth, full.PixelHeight); }
+        else if (edited != null || ext is ".png" or ".jpg" or ".jpeg")
         {
-            s.Raster = File.ReadAllBytes(path);
+            s.Edited = edited;
+            s.Raster = edited ?? File.ReadAllBytes(path);
             using var ms = new MemoryStream(s.Raster);
             full = BitmapDecoder.Create(ms, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad).Frames[0];
             media = new Rect(0, 0, full.PixelWidth, full.PixelHeight);
@@ -114,7 +118,8 @@ public static class Loader
         var bb = ContentBox(px, fw, fh, alpha) ?? throw new InvalidOperationException(Lang.T("Empty"));
         var crop = new CroppedBitmap(full, bb);
         crop.Freeze();
-        s.Preview = crop;
+        s.PxW = bb.Width;
+        s.Preview = Proxy(crop);
         if (pdf != null && s.Pdf == null) { s.Raster = Png(crop); media = new Rect(bb.X, bb.Y, bb.Width, bb.Height); } // PDF tak terbaca vektor: tempel render-nya
 
         if (widthMm <= 0) widthMm = Math.Round(bb.Width * nat, 1);
@@ -193,6 +198,19 @@ public static class Loader
         rt.Render(v);
         rt.Freeze();
         return rt;
+    }
+
+    // Layar memakai salinan kecil (sisi panjang maks 1600 px): RAM dan render tetap ringan untuk gambar besar.
+    // Export dan garis potong tetap memakai resolusi asli.
+    const int ViewMax = 1600;
+
+    static BitmapSource Proxy(BitmapSource b)
+    {
+        double k = (double)ViewMax / Math.Max(b.PixelWidth, b.PixelHeight);
+        if (k >= 1) return b;
+        var w = new WriteableBitmap(new TransformedBitmap(b, new ScaleTransform(k, k))); // salinan: gambar asli bisa dibuang
+        w.Freeze();
+        return w;
     }
 
     public static byte[] Png(BitmapSource b)

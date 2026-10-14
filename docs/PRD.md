@@ -47,6 +47,7 @@ Tahap sekarang: prototipe → cek kualitas → uji oleh operator. Status "produc
 | F12 | Resolusi cetak (dpi) tiap desain yang ditempel sebagai gambar. Merah dan masuk peringatan bila di bawah 150 dpi (target 300 dpi). Gunanya menangkap foto terkompres dari WhatsApp sebelum dicetak | Ada |
 | F13 | Export preview JPG (Ctrl+Shift+E): satu JPG per lembar, sisi panjang ±2000 px, untuk konfirmasi ke customer lewat WhatsApp | Ada |
 | F14 | Shortcut ala CorelDRAW: Ctrl+I = tambah file, F4 / Shift+F4 = pas layar (selain Ctrl+O dan Ctrl+0) | Ada |
+| F15 | Rapikan gambar (pengganti langkah Photoshop), untuk desain yang ditempel sebagai gambar: hapus latar otomatis, penghapus klik, toleransi warna, kikis tepi 0–3 px, urungkan dan kembalikan. Dibuka lewat ikon penghapus atau dobel-klik thumbnail. Garis potong dihitung ulang dari hasilnya | Ada |
 
 ## 6. Keputusan
 - **Platform:** Windows, C#/.NET 10, WPF.
@@ -55,10 +56,12 @@ Tahap sekarang: prototipe → cek kualitas → uji oleh operator. Status "produc
 - **Cutting Master 5:** bisa mengatur kondisi potong, urutan, dan potong/tidak per warna atau per layer.
 - **Export:** PDF menggantikan SVG dari v1. Alasannya: vektor dan CMYK tetap terjaga, dan satu file bisa berisi banyak halaman.
 - **Nesting:** greedy first-fit di grid 2 mm. Pada uji 130 stiker, grid 1 mm 5× lebih lambat dengan jumlah lembar yang sama.
-- **Ringan:** render tampilan lewat CPU, bukan GPU. Diukur: RAM 118–134 MB (lewat GPU 467 MB, sebagian besar driver grafis), CPU saat diam 0%, jendela muncul ±2 detik. Ganti zoom 0,1–0,4 detik CPU.
+- **Ringan:** render tampilan lewat CPU, bukan GPU. Diukur: RAM 118–134 MB (lewat GPU 467 MB, sebagian besar driver grafis), CPU saat diam 0%, jendela muncul ±2 detik. Ganti zoom 0,1–0,4 detik CPU. Layar memakai salinan gambar maksimal 1600 px (export tetap resolusi asli): dengan satu gambar 4000×3000 px RAM 186 MB, jendela Rapikan 310 MB, kembali ke 267 MB setelah ditutup. Hapus latar 4000×3000 px: 0,5 detik.
 - **Aman:** tanpa koneksi jaringan. File asli customer hanya dibaca. Yang ditulis hanya PDF export (lokasi dipilih operator) dan folder temp milik aplikasi, yang dihapus saat aplikasi ditutup. Error tak terduga tampil sebagai pesan, aplikasi tetap jalan. PDFium versi terbaru (build 8100, 2026) dipakai untuk membaca PDF customer.
 - **Kertas default A3+ 320×480 mm** (kertas stiker Develop di AP 55). F4/folio tidak ditambahkan karena cakupan hanya stiker.
 - **Ambang resolusi 150 dpi** masih tebakan awal (target riset 300 ppi); disesuaikan setelah melihat hasil cetak Develop.
+- **Rapikan gambar hanya untuk raster** (PNG, JPG, SVG, PDF yang gagal dibaca vektor). File vektor (PDF/AI/CDR) tetap dirapikan di CorelDRAW supaya warna CMYK dan vektornya utuh. Rapikan hanya mengubah transparansi, tidak menggambar ulang piksel.
+- **Ditunda sampai ada kebutuhan nyata:** hapus latar foto dengan AI dan memperbesar gambar pecah. Untuk gambar pecah, cara tercepat tetap meminta file asli ke customer; angka dpi merah memberi tahu kapan perlu.
 - **Tidak dibangun:** hide copy, simpan proyek, reg mark buatan aplikasi, dan mode nametag/kartu.
 
 ## 7. Dependensi dan lisensi
@@ -77,6 +80,7 @@ Tahap sekarang: prototipe → cek kualitas → uji oleh operator. Status "produc
 - Nesting belum optimal (greedy).
 - Belum ada undo. Stiker belum bisa dipindah antar-lembar. Rotasi hanya kelipatan 90°.
 - Warna di layar hanya preview. Akurasi warna dijaga di file export.
+- Rapikan gambar: latar foto yang ramai (bukan warna polos) belum bisa dihapus otomatis; gambar di atas 4000 px diperkecil ke 4000 px saat dirapikan.
 
 ## 9. Pertanyaan terbuka
 | Pertanyaan | Ditanyakan ke | Default sampai dijawab |
@@ -93,13 +97,14 @@ Tahap sekarang: prototipe → cek kualitas → uji oleh operator. Status "produc
 2. Tarik file dari Explorer ke jendela Printech. Coba alat Geser tampilan (H atau tahan Spasi), Zoom (Z), dan shortcut Ctrl+I, F4, R, Delete, panah.
 3. Export preview JPG, kirim ke WhatsApp. Apakah cukup jelas untuk konfirmasi ke customer?
 4. Masukkan foto yang diterima lewat WhatsApp. Apakah angka dpi merah muncul untuk file yang hasil cetaknya memang pecah?
-5. Export PDF, lalu buka di CorelDRAW. Apakah artwork tajam dan warnanya sama dengan file asli?
-6. Di Cutting Master 5, pilih per warna: magenta = kiss-cut, cyan = die-cut. Apakah potongannya sesuai?
-7. Cetak di Develop (A3+) dan potong fisik di Graphtec. Berapa mm selisih potongannya?
-8. PDF dari customer yang punya latar putih penuh: apakah garis potongnya ikut menjadi kotak?
-9. Catat setiap error atau kejanggalan, lalu kirim ke pengembang.
+5. Rapikan 3–5 gambar customer yang biasanya dibersihkan di Photoshop. Berapa menit dibanding Photoshop? Apa yang belum bisa dikerjakan?
+6. Export PDF, lalu buka di CorelDRAW. Apakah artwork tajam dan warnanya sama dengan file asli?
+7. Di Cutting Master 5, pilih per warna: magenta = kiss-cut, cyan = die-cut. Apakah potongannya sesuai?
+8. Cetak di Develop (A3+) dan potong fisik di Graphtec. Berapa mm selisih potongannya?
+9. PDF dari customer yang punya latar putih penuh: apakah garis potongnya ikut menjadi kotak?
+10. Catat setiap error atau kejanggalan, lalu kirim ke pengembang.
 
 ## 11. Menjalankan
 - **Menjalankan aplikasi:** `dotnet run --project StickerLayout` (perlu .NET 10). File juga bisa dibuka sebagai argumen, misalnya lewat "Open with" atau dengan menyeret file ke ikon aplikasi.
-- **File contoh:** folder `samples/` (circle.png, star.jpg, badge.svg, logo.pdf, logo.ai, dan lainnya).
+- **File contoh:** folder `samples/` (circle.png, star.jpg, badge.svg, logo.pdf, logo.ai, logo-on-blue.jpg untuk mencoba Rapikan, dan lainnya).
 - **Cek otomatis:** `StickerLayout\bin\Debug\net10.0-windows\StickerLayout.exe --selfcheck samples`. Hasilnya ditulis ke `samples/selfcheck.txt`.

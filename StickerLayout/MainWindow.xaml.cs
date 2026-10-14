@@ -1,12 +1,10 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
 using System.IO;
-using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
-using System.Windows.Interop;
 using System.Windows.Media;
 using Microsoft.Win32;
 
@@ -52,16 +50,7 @@ public partial class MainWindow : Window
     Cut Die => new(DieOn.IsChecked == true, D(DieOff, 4, 0), D(DieSm, 0, 0));
     Brush Dim => (Brush)FindResource("Dim");
 
-    // Judul jendela gelap agar menyatu dengan tema (Windows 10 20H1+; warna judul hanya Windows 11).
-    [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
-
-    void Window_SourceInitialized(object s, EventArgs e)
-    {
-        var h = new WindowInteropHelper(this).Handle;
-        int dark = 1, caption = 0x2B2726; // #26272B sebagai COLORREF 0x00BBGGRR
-        DwmSetWindowAttribute(h, 20, ref dark, 4);
-        DwmSetWindowAttribute(h, 35, ref caption, 4);
-    }
+    void Window_SourceInitialized(object s, EventArgs e) => App.DarkTitle(this);
 
     void Redraw(string? msg = null)
     {
@@ -179,6 +168,38 @@ public partial class MainWindow : Window
         Redraw(sheets.Count > 0 ? Summary() : "");
     }
 
+    // Rapikan gambar (pengganti langkah Photoshop). Hanya desain yang ditempel sebagai gambar.
+    void CleanItem_Click(object s, RoutedEventArgs e)
+    {
+        if ((s as FrameworkElement)?.DataContext is Sticker st) Clean(st);
+    }
+
+    void Thumb_Down(object s, MouseButtonEventArgs e)
+    {
+        if (e.ClickCount == 2 && (s as FrameworkElement)?.DataContext is Sticker st) Clean(st);
+    }
+
+    void Clean(Sticker it)
+    {
+        if (!it.CanClean || !CutsValid()) return;
+        var w = new CleanupWindow(it.Edited ?? it.Raster, it.Name) { Owner = this };
+        bool ok = w.ShowDialog() == true && w.Result != null;
+        var result = w.Result;
+        w = null;
+        GC.Collect(); // jendela Rapikan memakai buffer gambar besar; kembalikan memorinya segera
+        if (!ok) return;
+        try
+        {
+            var n = Loader.Load(it.Source, it.Page, it.WidthMm, Kiss, Die, edited: result);
+            n.Copies = it.Copies;
+            n.Name = it.Name;
+            items[items.IndexOf(it)] = n;
+        }
+        catch (Exception ex) { MessageBox.Show(ex.Message, App.Brand); return; }
+        Arrange();
+        Redraw(Lang.T("Cleaned", it.Name));
+    }
+
     void Nest_Click(object s, RoutedEventArgs e) => Arrange();
 
     void Arrange()
@@ -194,7 +215,7 @@ public partial class MainWindow : Window
                 var it = items[i];
                 if (it.WidthMm > 0 && (Math.Abs(it.LoadedW - it.WidthMm) > 1e-6 || it.LoadedKiss != kiss || it.LoadedDie != die))
                 {
-                    var n = Loader.Load(it.Source, it.Page, it.WidthMm, kiss, die);
+                    var n = Loader.Load(it.Source, it.Page, it.WidthMm, kiss, die, edited: it.Edited);
                     n.Copies = it.Copies;
                     n.Name = it.Name;
                     items[i] = n;

@@ -56,11 +56,33 @@ public static class SelfCheck
             Check(Math.Abs(pdfItem.ArtW - 49.39) < 0.6 && Math.Abs(pdfItem.ArtH - 42.33) < 0.6, $"ukuran asli PDF salah: {pdfItem.ArtW:F2}x{pdfItem.ArtH:F2}");
             Check(items.First(s => s.Name == "logo.ai").Pdf != null, "logo.ai tidak dibaca sebagai PDF");
 
+            // Rapikan gambar: logo oranye + teks hijau di latar biru (JPG, tanpa alpha).
+            var blueJpg = Path.Combine(dir, "logo-on-blue.jpg");
+            var rawBlue = Loader.Load(blueJpg, 0, 40, kiss, new Cut(false, 0, 0));
+            var ci = new CleanImage(File.ReadAllBytes(blueJpg));
+            Check(ci.BorderColor() is { } bc && bc.B > 150 && bc.R < 80, $"warna latar salah: {ci.BorderColor()}");
+            int full0 = ci.OpaqueCount(0);
+            Check(ci.EraseFromBorder(32) > 0, "hapus latar tidak menghapus apa pun");
+            int afterBg = ci.OpaqueCount(0);
+            Check(ci.EraseAt(150, 286, 32) > 0, "penghapus klik tidak menghapus teks");
+            int afterText = ci.OpaqueCount(0);
+            Check(ci.Undo() && ci.OpaqueCount(0) == afterBg, "undo tidak mengembalikan teks");
+            Check(ci.EraseAt(150, 286, 32) > 0 && ci.OpaqueCount(0) == afterText, "hapus teks ulang gagal");
+            Check(ci.OpaqueCount(2) < afterText, "kikis tepi tidak mengurangi piksel");
+            var cleaned = Loader.Load(blueJpg, 0, 40, kiss, new Cut(false, 0, 0), edited: ci.ToPng(1));
+            Check(cleaned.Edited != null && cleaned.Raster == cleaned.Edited, "hasil rapikan tidak dipakai untuk export");
+            Check(Math.Abs(cleaned.ArtW - cleaned.ArtH) < 1, $"teks masih ikut: {cleaned.ArtW:F1}x{cleaned.ArtH:F1} mm");
+            Check(cleaned.KissGeo!.GetArea() < rawBlue.KissGeo!.GetArea() * 0.85, "garis potong tidak mengikuti lingkaran");
+            log.Add($"rapikan: piksel opak {full0} -> latar {afterBg} -> teks {afterText}; luas kiss {rawBlue.KissGeo!.GetArea():F0} -> {cleaned.KissGeo!.GetArea():F0} mm2");
+            var cs = new CleanImage(File.ReadAllBytes(Path.Combine(dir, "star.jpg")));
+            cs.EraseFromBorder(32);
+            Check(cs.Alpha(0)[155 * cs.W + 150] > 16, "hapus latar ikut menghapus lubang di tengah bintang");
+
             // A3+ = kertas stiker Develop (AP 55).
             Check(Paper.Sizes.TryGetValue("A3+", out var a3p) && a3p == (320, 480), "preset A3+ 320x480 tidak ada");
             // DPI hanya untuk desain yang ditempel sebagai gambar; vektor tidak punya DPI.
             var circle = items.First(s => s.Name == "circle.png");
-            Check(circle.Dpi is { } cd && Math.Abs(cd - circle.Preview.PixelWidth * 25.4 / 40) < 0.01 && !circle.LowDpi, $"DPI circle salah: {circle.Dpi}");
+            Check(circle.Dpi is { } cd && Math.Abs(cd - circle.PxW * 25.4 / 40) < 0.01 && !circle.LowDpi, $"DPI circle salah: {circle.Dpi}");
             Check(pdfItem.Dpi == null && !pdfItem.LowDpi, "PDF vektor tidak boleh punya DPI");
             var wide = Loader.Load(Path.Combine(dir, "circle.png"), 0, 80, kiss, die);
             Check(wide.LowDpi, $"circle 80 mm ({wide.Dpi:0} dpi) harus ditandai resolusi rendah");
@@ -216,6 +238,14 @@ public static class SelfCheck
             dc.DrawGeometry(Brushes.Crimson, null, g);
             dc.DrawEllipse(Brushes.White, null, new Point(150, 155), 25, 25);
         }), Path.Combine(dir, "star.jpg"), new JpegBitmapEncoder { QualityLevel = 90 });
+
+        // logo-on-blue.jpg: lingkaran oranye + teks hijau di latar biru, untuk uji Rapikan gambar
+        Save(Draw(dc =>
+        {
+            dc.DrawRectangle(new SolidColorBrush(Color.FromRgb(30, 90, 168)), null, new Rect(0, 0, 300, 300));
+            dc.DrawEllipse(Brushes.DarkOrange, null, new Point(150, 140), 110, 110);
+            dc.DrawRectangle(new SolidColorBrush(Color.FromRgb(20, 120, 60)), null, new Rect(20, 280, 260, 12));
+        }), Path.Combine(dir, "logo-on-blue.jpg"), new JpegBitmapEncoder { QualityLevel = 90 });
 
         File.WriteAllText(Path.Combine(dir, "badge.svg"),
             "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"200\" height=\"120\" viewBox=\"0 0 100 60\">" +

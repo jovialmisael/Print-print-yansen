@@ -136,7 +136,8 @@
                                                 <ColumnDefinition/>
                                                 <ColumnDefinition Width="Auto"/>
                                             </Grid.ColumnDefinitions>
-                                            <Border Width="42" Height="42" CornerRadius="3" Background="{StaticResource Checker}" BorderBrush="{StaticResource Line}" BorderThickness="1">
+                                            <Border Width="42" Height="42" CornerRadius="3" Background="{StaticResource Checker}" BorderBrush="{StaticResource Line}" BorderThickness="1"
+                                                    MouseLeftButtonDown="Thumb_Down">
                                                 <Image Source="{Binding Preview}" Stretch="Uniform" Margin="3"/>
                                             </Border>
                                             <StackPanel Grid.Column="1" Margin="9,0,4,0" VerticalAlignment="Center">
@@ -161,8 +162,23 @@
                                                     <TextBlock Text="pcs" Style="{StaticResource Small}" Margin="5,0,0,0"/>
                                                 </StackPanel>
                                             </StackPanel>
-                                            <Button Grid.Column="2" Style="{StaticResource IconBtn}" Content="&#xE74D;" VerticalAlignment="Top" Click="RemoveItem_Click"
-                                                    ToolTip="{DynamicResource Remove}" AutomationProperties.Name="{DynamicResource Remove}"/>
+                                            <StackPanel Grid.Column="2" VerticalAlignment="Top">
+                                                <Button Content="&#xE75C;" Click="CleanItem_Click" IsEnabled="{Binding CanClean}" ToolTipService.ShowOnDisabled="True"
+                                                        AutomationProperties.Name="{DynamicResource Clean}">
+                                                    <Button.Style>
+                                                        <Style TargetType="Button" BasedOn="{StaticResource IconBtn}">
+                                                            <Setter Property="ToolTip" Value="{DynamicResource CleanTip}"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding CanClean}" Value="False">
+                                                                    <Setter Property="ToolTip" Value="{DynamicResource CleanVector}"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Button.Style>
+                                                </Button>
+                                                <Button Style="{StaticResource IconBtn}" Content="&#xE74D;" Click="RemoveItem_Click"
+                                                        ToolTip="{DynamicResource Remove}" AutomationProperties.Name="{DynamicResource Remove}"/>
+                                            </StackPanel>
                                         </Grid>
                                     </DataTemplate>
                                 </ListBox.ItemTemplate>
