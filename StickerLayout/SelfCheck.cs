@@ -56,6 +56,16 @@ public static class SelfCheck
             Check(Math.Abs(pdfItem.ArtW - 49.39) < 0.6 && Math.Abs(pdfItem.ArtH - 42.33) < 0.6, $"ukuran asli PDF salah: {pdfItem.ArtW:F2}x{pdfItem.ArtH:F2}");
             Check(items.First(s => s.Name == "logo.ai").Pdf != null, "logo.ai tidak dibaca sebagai PDF");
 
+            // A3+ = kertas stiker Develop (AP 55).
+            Check(Paper.Sizes.TryGetValue("A3+", out var a3p) && a3p == (320, 480), "preset A3+ 320x480 tidak ada");
+            // DPI hanya untuk desain yang ditempel sebagai gambar; vektor tidak punya DPI.
+            var circle = items.First(s => s.Name == "circle.png");
+            Check(circle.Dpi is { } cd && Math.Abs(cd - circle.Preview.PixelWidth * 25.4 / 40) < 0.01 && !circle.LowDpi, $"DPI circle salah: {circle.Dpi}");
+            Check(pdfItem.Dpi == null && !pdfItem.LowDpi, "PDF vektor tidak boleh punya DPI");
+            var wide = Loader.Load(Path.Combine(dir, "circle.png"), 0, 80, kiss, die);
+            Check(wide.LowDpi, $"circle 80 mm ({wide.Dpi:0} dpi) harus ditandai resolusi rendah");
+            log.Add($"dpi: circle 40 mm = {circle.Dpi:0} dpi, 80 mm = {wide.Dpi:0} dpi (rendah)");
+
             // Smooth menutup lekukan bintang: luas naik.
             var raw = Loader.Load(Path.Combine(dir, "star.jpg"), 0, 40, new Cut(true, 1, 0), new Cut(false, 0, 0));
             var smooth = Loader.Load(Path.Combine(dir, "star.jpg"), 0, 40, new Cut(true, 1, 4), new Cut(false, 0, 0));
@@ -105,7 +115,14 @@ public static class SelfCheck
                 Check(text.Contains("0 1 0 0 K") && text.Contains("1 0 0 0 K"), "garis potong bukan CMYK magenta/cyan");
             }
 
-            Save(Snapshot(Nest.Sheet(sheets[0], A4W, A4H, Margin, null, 0), A4W, A4H, 4), Path.Combine(dir, "layout-1.png"));
+            Save(Export.Snapshot(Nest.Sheet(sheets[0], A4W, A4H, Margin, null, 0), A4W, A4H, 4), Path.Combine(dir, "layout-1.png"));
+
+            // Preview JPG untuk customer: satu file per lembar, sisi panjang +-2000 px, bisa dibaca ulang.
+            var jpgs = Export.Preview(Path.Combine(dir, "preview.jpg"), sheets, A4W, heights, Margin);
+            Check(jpgs.Count == sheets.Count && jpgs.All(File.Exists), "jumlah preview JPG != jumlah lembar");
+            var jf = BitmapDecoder.Create(new Uri(jpgs[0]), BitmapCreateOptions.None, BitmapCacheOption.OnLoad).Frames[0];
+            Check(Math.Abs(Math.Max(jf.PixelWidth, jf.PixelHeight) - 2000) <= 2, $"ukuran preview salah: {jf.PixelWidth}x{jf.PixelHeight}");
+            log.Add($"preview: {jpgs.Count} JPG, {jf.PixelWidth}x{jf.PixelHeight} px, {new FileInfo(jpgs[0]).Length / 1024} KB");
             log.Add("OK");
             File.WriteAllLines(Path.Combine(dir, "selfcheck.txt"), log);
             return 0;
@@ -156,22 +173,6 @@ public static class SelfCheck
         var c = new byte[4];
         bmp.CopyPixels(new Int32Rect((int)(page.X * pxMm), (int)(page.Y * pxMm), 1, 1), c, 4, 0);
         return Color.FromRgb(c[2], c[1], c[0]);
-    }
-
-    static BitmapSource Snapshot(FrameworkElement el, double w, double h, double k)
-    {
-        el.Measure(new Size(w, h));
-        el.Arrange(new Rect(0, 0, w, h));
-        el.UpdateLayout();
-        var v = new DrawingVisual();
-        using (var dc = v.RenderOpen())
-        {
-            dc.PushTransform(new ScaleTransform(k, k));
-            dc.DrawRectangle(new VisualBrush(el), null, new Rect(0, 0, w, h));
-        }
-        var rt = new RenderTargetBitmap((int)(w * k), (int)(h * k), 96, 96, PixelFormats.Pbgra32);
-        rt.Render(v);
-        return rt;
     }
 
     static void Save(BitmapSource b, string path, BitmapEncoder? enc = null)

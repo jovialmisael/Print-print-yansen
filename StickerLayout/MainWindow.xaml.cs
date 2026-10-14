@@ -37,7 +37,7 @@ public partial class MainWindow : Window
         InitializeComponent();
         List.ItemsSource = items;
         PaperBox.ItemsSource = Paper.Sizes.Keys.Append("Custom").ToList();
-        PaperBox.SelectedItem = "A3";
+        PaperBox.SelectedItem = "A3+"; // kertas stiker Develop (AP 55)
     }
 
     static double D(TextBox t, double def, double min = 0.01) =>
@@ -101,6 +101,8 @@ public partial class MainWindow : Window
         int bad = sheets.Sum(x => x.Count(p => p.Bad));
         if (bad > 0) warn.Add(Lang.T("Overlap", bad));
         if (tooBig > 0) warn.Add(Lang.T("TooBig", tooBig));
+        int low = items.Count(i => i.LowDpi);
+        if (low > 0) warn.Add(Lang.T("LowDpi", low));
         WarnText.Text = string.Join("   ", warn);
         WarnPill.Visibility = warn.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
 
@@ -257,6 +259,22 @@ public partial class MainWindow : Window
         finally { Mouse.OverrideCursor = null; }
     }
 
+    // JPG ringan untuk konfirmasi ke customer (WhatsApp) sebelum cetak.
+    void Preview_Click(object s, RoutedEventArgs e)
+    {
+        if (sheets.Count == 0) { MessageBox.Show(Lang.T("NestFirst"), App.Brand); return; }
+        var dlg = new SaveFileDialog { Filter = "JPG|*.jpg", FileName = "preview.jpg" };
+        if (dlg.ShowDialog() != true) return;
+        Mouse.OverrideCursor = Cursors.Wait;
+        try
+        {
+            var files = Export.Preview(dlg.FileName, sheets, sheetW, sheetH, MarginMm);
+            Redraw(Lang.T("PreviewSaved", files.Count, Path.GetDirectoryName(dlg.FileName)!));
+        }
+        catch (Exception ex) { MessageBox.Show(ex.Message, App.Brand); }
+        finally { Mouse.OverrideCursor = null; }
+    }
+
     void Paper_Changed(object s, SelectionChangedEventArgs e)
     {
         if (PaperBox.SelectedItem is string k && Paper.Sizes.TryGetValue(k, out var sz)) { CanvasW.Text = F(sz.W); CanvasH.Text = F(sz.H); }
@@ -402,11 +420,17 @@ public partial class MainWindow : Window
     // ---- Keyboard, gaya Photoshop ----
     void Window_KeyDown(object s, KeyEventArgs e)
     {
+        if (Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift) && e.Key == Key.E)
+        {
+            Preview_Click(s, e);
+            e.Handled = true;
+            return;
+        }
         if (Keyboard.Modifiers == ModifierKeys.Control)
         {
             switch (e.Key)
             {
-                case Key.O: Add_Click(s, e); break;
+                case Key.O: case Key.I: Add_Click(s, e); break; // Ctrl+I = Import di CorelDRAW
                 case Key.E: Export_Click(s, e); break;
                 case Key.L: Arrange(); break;
                 case Key.D0: case Key.NumPad0: Fit(); break;
@@ -425,6 +449,7 @@ public partial class MainWindow : Window
             case Key.V: ToolMove.IsChecked = true; break;
             case Key.H: ToolHand.IsChecked = true; break;
             case Key.Z: ToolZoom.IsChecked = true; break;
+            case Key.F4 when Keyboard.FocusedElement is not ComboBox: Fit(); break; // F4 / Shift+F4 seperti CorelDRAW
             case Key.Delete when sel != null: DeleteSel(); break;
             case Key.R when sel != null: EditSel(p => p.Rot = (p.Rot + 90) % 360); break;
             case Key.Left when sel != null: EditSel(p => p.X -= step); break;

@@ -32,6 +32,12 @@ public class Sticker
     public double AreaMm2;                       // luas di dalam garis potong terluar
     public BitmapSource Preview { get; set; } = null!; // artwork yang sudah di-crop, untuk layar
     public string HText => $"× {ArtH:0.#} mm";        // tinggi artwork di daftar desain
+    // Resolusi cetak untuk desain yang ditempel sebagai gambar. Target riset 300 ppi; 150 = batas kasar,
+    // sesuaikan setelah melihat hasil cetak Develop.
+    public const double MinDpi = 150;
+    public double? Dpi => Pdf == null && WidthMm > 0 ? Preview.PixelWidth * 25.4 / WidthMm : null;
+    public string DpiText => Dpi is { } d ? $"{d:0} dpi" : "";
+    public bool LowDpi => Dpi < MinDpi;
     public string Kiss = "", Die = "";           // path SVG garis potong (mm, koordinat kotak)
     public bool[,] Grid = null!;                 // hunian sel nesting dari garis terluar [x,y]
     public int Area;
@@ -329,7 +335,7 @@ public static class Paper
 {
     public static readonly Dictionary<string, (double W, double H)> Sizes = new()
     {
-        ["A0"] = (841, 1189), ["A1"] = (594, 841), ["A2"] = (420, 594), ["A3"] = (297, 420), ["A4"] = (210, 297),
+        ["A0"] = (841, 1189), ["A1"] = (594, 841), ["A2"] = (420, 594), ["A3"] = (297, 420), ["A3+"] = (320, 480), ["A4"] = (210, 297),
         ["A5"] = (148, 210), ["A6"] = (105, 148), ["SRA3"] = (320, 450), ["SRA4"] = (225, 320),
     };
 }

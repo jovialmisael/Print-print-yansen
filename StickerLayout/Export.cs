@@ -1,6 +1,7 @@
 using System.IO;
 using System.Windows;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using PdfSharp.Drawing;
 using PdfSharp.Pdf;
 
@@ -80,6 +81,41 @@ public static class Export
         var (tx, ty) = p.T;
         g.TranslateTransform(p.X + tx, p.Y + ty);
         g.RotateTransform(p.Rot);
+    }
+
+    // Satu JPG per lembar (nama-1.jpg, nama-2.jpg, ...), sisi panjang +-2000 px: cukup tajam, ringan dikirim lewat WhatsApp.
+    public static List<string> Preview(string path, IList<List<Placed>> sheets, double cw, IList<double> sheetH, double margin)
+    {
+        var files = new List<string>();
+        for (int i = 0; i < sheets.Count; i++)
+        {
+            double h = sheetH[i];
+            var file = sheets.Count == 1 ? path
+                : Path.Combine(Path.GetDirectoryName(path)!, $"{Path.GetFileNameWithoutExtension(path)}-{i + 1}{Path.GetExtension(path)}");
+            var enc = new JpegBitmapEncoder { QualityLevel = 85 };
+            enc.Frames.Add(BitmapFrame.Create(Snapshot(Nest.Sheet(sheets[i], cw, h, margin, null, i), cw, h, 2000 / Math.Max(cw, h))));
+            using (var fs = File.Create(file)) enc.Save(fs);
+            files.Add(file);
+        }
+        return files;
+    }
+
+    // Render elemen WPF (satuan mm) ke bitmap; k = pixel per mm.
+    public static BitmapSource Snapshot(FrameworkElement el, double w, double h, double k)
+    {
+        el.Measure(new Size(w, h));
+        el.Arrange(new Rect(0, 0, w, h));
+        el.UpdateLayout();
+        var v = new DrawingVisual();
+        using (var dc = v.RenderOpen())
+        {
+            dc.PushTransform(new ScaleTransform(k, k));
+            dc.DrawRectangle(new VisualBrush(el), null, new Rect(0, 0, w, h));
+        }
+        var rt = new RenderTargetBitmap((int)Math.Round(w * k), (int)Math.Round(h * k), 96, 96, PixelFormats.Pbgra32);
+        rt.Render(v);
+        rt.Freeze();
+        return rt;
     }
 
     static XGraphicsPath ToPath(Geometry geo)

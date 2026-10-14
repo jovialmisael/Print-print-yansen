@@ -14,8 +14,9 @@
                 <TextBlock Text="Printech" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,12,0"/>
                 <Menu VerticalAlignment="Center">
                     <MenuItem Header="{DynamicResource MFile}">
-                        <MenuItem Header="{DynamicResource Add}" InputGestureText="Ctrl+O" Click="Add_Click"/>
+                        <MenuItem Header="{DynamicResource Add}" InputGestureText="Ctrl+O, Ctrl+I" Click="Add_Click"/>
                         <MenuItem Header="{DynamicResource Export}" InputGestureText="Ctrl+E" Click="Export_Click"/>
+                        <MenuItem Header="{DynamicResource Preview}" InputGestureText="Ctrl+Shift+E" Click="Preview_Click"/>
                         <Separator/>
                         <MenuItem Header="{DynamicResource Exit}" Click="Exit_Click"/>
                     </MenuItem>
@@ -29,7 +30,7 @@
                     <MenuItem Header="{DynamicResource MView}">
                         <MenuItem Header="{DynamicResource ZoomIn}" InputGestureText="Ctrl++" Click="ZoomIn_Click"/>
                         <MenuItem Header="{DynamicResource ZoomOut}" InputGestureText="Ctrl+-" Click="ZoomOut_Click"/>
-                        <MenuItem Header="{DynamicResource Fit}" InputGestureText="Ctrl+0" Click="Fit_Click"/>
+                        <MenuItem Header="{DynamicResource Fit}" InputGestureText="Ctrl+0, F4" Click="Fit_Click"/>
                     </MenuItem>
                     <MenuItem Header="{DynamicResource Lang}">
                         <MenuItem x:Name="LangId" Header="Indonesia" Tag="id" IsChecked="True" Click="Lang_Click"/>
@@ -139,7 +140,20 @@
                                                 <Image Source="{Binding Preview}" Stretch="Uniform" Margin="3"/>
                                             </Border>
                                             <StackPanel Grid.Column="1" Margin="9,0,4,0" VerticalAlignment="Center">
-                                                <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"/>
+                                                <DockPanel>
+                                                    <TextBlock DockPanel.Dock="Right" Text="{Binding DpiText}" Margin="6,0,0,0" ToolTip="{DynamicResource DpiTip}">
+                                                        <TextBlock.Style>
+                                                            <Style TargetType="TextBlock" BasedOn="{StaticResource Small}">
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding LowDpi}" Value="True">
+                                                                        <Setter Property="Foreground" Value="{StaticResource Warn}"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </TextBlock.Style>
+                                                    </TextBlock>
+                                                    <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"/>
+                                                </DockPanel>
                                                 <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
                                                     <TextBox Width="50" Style="{StaticResource Num}" Text="{Binding WidthMm, StringFormat=0.#}" ToolTip="{DynamicResource WidthTip}"/>
                                                     <TextBlock Text="{Binding HText}" Style="{StaticResource Small}" Margin="5,0,10,0"/>
