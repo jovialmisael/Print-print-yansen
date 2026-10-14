@@ -105,6 +105,12 @@ Tahap sekarang: prototipe → cek kualitas → uji oleh operator. Status "produc
 10. Catat setiap error atau kejanggalan, lalu kirim ke pengembang.
 
 ## 11. Menjalankan
+- **Untuk operator (tanpa memasang .NET):**
+  1. Salin `Printech-win-x64.zip` (64 MB) ke PC operator.
+  2. Klik kanan zip → Properties → centang **Unblock** → OK. Langkah ini mencegah peringatan Windows SmartScreen, karena exe belum ditandatangani.
+  3. Ekstrak (142 MB), lalu jalankan `Printech\StickerLayout.exe`. Bila SmartScreen tetap muncul: **More info → Run anyway**.
+  4. Butuh Windows 10/11 64-bit (belum diuji di PC operator). Build Release: jendela muncul ±0,7 detik, RAM ±124 MB.
+- **Membuat zip untuk operator:** `dotnet publish StickerLayout -c Release -r win-x64 --self-contained -o publish\Printech`, lalu zip folder `publish\Printech`. Folder `publish/` tidak masuk git.
 - **Menjalankan aplikasi:** `dotnet run --project StickerLayout` (perlu .NET 10). File juga bisa dibuka sebagai argumen, misalnya lewat "Open with" atau dengan menyeret file ke ikon aplikasi.
 - **File contoh:** folder `samples/` (circle.png, star.jpg, badge.svg, logo.pdf, logo.ai, logo-on-blue.jpg untuk mencoba Rapikan, dan lainnya).
 - **Cek otomatis:** `StickerLayout\bin\Debug\net10.0-windows\StickerLayout.exe --selfcheck samples`. Hasilnya ditulis ke `samples/selfcheck.txt`.
