@@ -65,6 +65,10 @@ public class Placed
 public static class Loader
 {
     public const double PxMm = 6;    // resolusi mask garis potong: 6 px per mm
+    // Potrace: tanpa sudut tajam (pisau tidak berbelok mendadak) dan gabung segmen kurva sampai 1 px (0,17 mm).
+    // Diukur 2026-10-16 di pipeline ini; kalibrasi ulang setelah uji potong di Graphtec.
+    const double AlphaMax = 1.3334, OptTolerance = 1.0;
+    const double MaxInward = 0.3;    // penghalusan tidak boleh membawa garis lebih dekat dari (offset - 0,3 mm) ke artwork
     const double ViewPxMm = 10;      // resolusi render PDF untuk layar & deteksi konten
     const double Pt = 72 / 25.4;     // point per mm
 
@@ -137,9 +141,14 @@ public static class Loader
         var m = new bool[W, H];
         for (int y = 0; y < mh; y++) for (int x = 0; x < mw; x++) m[x + pad, y + pad] = mask[x, y];
 
-        bool[,]? outer = null;
-        if (kiss.On) { outer = Close(m, kiss); s.Kiss = Trace(outer); }
-        if (die.On) { outer = Close(m, die); s.Die = Trace(outer); }
+        bool[,]? outer = null, kissMask = null;
+        if (kiss.On) { outer = kissMask = Smooth(Close(m, kiss), m, kiss); s.Kiss = Trace(outer); }
+        if (die.On)
+        {
+            outer = Smooth(Close(m, die), m, die);
+            if (kissMask != null) foreach (var (x, y) in Cells(outer)) outer[x, y] |= kissMask[x, y]; // die selalu membungkus kiss
+            s.Die = Trace(outer);
+        }
         if (outer == null) throw new InvalidOperationException(Lang.T("NeedCut"));
 
         s.Off = pad / PxMm;
@@ -274,6 +283,39 @@ public static class Loader
         return sm > 0 ? Not(Dilate(Not(d), sm)) : d;
     }
 
+    // Haluskan kontur: blur Gaussian (sigma = Halus) lalu threshold 0,5. Lekukan kecil hilang, node berkurang,
+    // pisau bergerak mulus. Hasil di-OR dengan artwork + (offset - 0,3 mm) supaya garis tidak mendekati artwork.
+    // ponytail: Gaussian langsung O(sigma) per piksel; ganti box blur 3 lintasan bila stiker > 200 mm terasa lambat.
+    static bool[,] Smooth(bool[,] m, bool[,] art, Cut c)
+    {
+        double s = c.Smooth * PxMm;
+        if (s <= 0) return m;
+        int W = m.GetLength(0), H = m.GetLength(1), r = (int)Math.Ceiling(3 * s);
+        var k = new double[2 * r + 1];
+        for (int i = -r; i <= r; i++) k[i + r] = Math.Exp(-i * i / (2 * s * s));
+        double sum = k.Sum();
+        for (int i = 0; i < k.Length; i++) k[i] /= sum;
+        var t = new double[W, H];
+        for (int j = -r; j <= r; j++) // urutan loop mengikuti memori [x, y] (y berurutan)
+            for (int x = Math.Max(0, -j); x < Math.Min(W, W - j); x++)
+                for (int y = 0; y < H; y++)
+                    if (m[x + j, y]) t[x, y] += k[j + r];
+        var res = Dilate(art, (int)Math.Floor((c.Off - MaxInward) * PxMm));
+        for (int x = 0; x < W; x++)
+            for (int y = 0; y < H; y++)
+            {
+                double a = 0;
+                for (int j = Math.Max(-r, -y); j <= Math.Min(r, H - 1 - y); j++) a += k[j + r] * t[x, y + j];
+                if (a >= 0.5) res[x, y] = true;
+            }
+        return res;
+    }
+
+    static IEnumerable<(int, int)> Cells(bool[,] m)
+    {
+        for (int x = 0; x < m.GetLength(0); x++) for (int y = 0; y < m.GetLength(1); y++) yield return (x, y);
+    }
+
     static bool[,] Not(bool[,] m)
     {
         var n = new bool[m.GetLength(0), m.GetLength(1)];
@@ -308,7 +350,7 @@ public static class Loader
         int W = m.GetLength(0), H = m.GetLength(1);
         using var pb = PotraceBitmap.Create(W, H);
         for (int y = 0; y < H; y++) for (int x = 0; x < W; x++) if (m[x, y]) pb.SetBlack(x, y);
-        var st = Potrace.Trace(new PotraceParam(), pb);
+        var st = Potrace.Trace(new PotraceParam { AlphaMax = AlphaMax, OptTolerance = OptTolerance }, pb);
         var sb = new StringBuilder();
         string P(PotraceDPoint p) => $"{F(p.X / PxMm)} {F(p.Y / PxMm)}";
         for (var p = st.Plist; p != null; p = p.Next)

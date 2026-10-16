@@ -50,6 +50,13 @@ public static class SelfCheck
                 Check(s.DieGeo!.GetArea() > s.KissGeo!.GetArea(), $"{s.Name}: die-cut tidak membungkus kiss-cut");
                 log.Add($"{s.Name}: artwork {s.ArtW:F1}x{s.ArtH:F1} mm, kotak {s.W}x{s.H} mm, vektor={s.Pdf != null}");
             }
+            foreach (var f in new[] { "circle.png", "star.jpg", "badge.svg", "logo.pdf", "rough.jpg" })
+            {
+                var nsw = Stopwatch.StartNew();
+                var ns = Loader.Load(Path.Combine(dir, f), 0, f.EndsWith(".pdf") ? 0 : 40, kiss, die);
+                log.Add($"node {f}: kiss {Nodes(ns.Kiss)} ({Corners(ns.Kiss)} sudut), die {Nodes(ns.Die)} ({Corners(ns.Die)} sudut), {nsw.ElapsedMilliseconds} ms");
+            }
+
             var pdfItem = items.First(s => s.Name == "logo.pdf");
             Check(pdfItem.Pdf != null, "logo.pdf tidak dipakai sebagai vektor");
             // isi PDF: lebar 140 pt (49,39 mm), tinggi 120 pt (42,33 mm), kotak merah di luar CropBox tidak boleh ikut
@@ -88,11 +95,26 @@ public static class SelfCheck
             Check(wide.LowDpi, $"circle 80 mm ({wide.Dpi:0} dpi) harus ditandai resolusi rendah");
             log.Add($"dpi: circle 40 mm = {circle.Dpi:0} dpi, 80 mm = {wide.Dpi:0} dpi (rendah)");
 
-            // Smooth menutup lekukan bintang: luas naik.
+            // Halus mengurangi node: bintang dengan halus 4 mm lebih sedikit node daripada halus 0.
             var raw = Loader.Load(Path.Combine(dir, "star.jpg"), 0, 40, new Cut(true, 1, 0), new Cut(false, 0, 0));
             var smooth = Loader.Load(Path.Combine(dir, "star.jpg"), 0, 40, new Cut(true, 1, 4), new Cut(false, 0, 0));
-            log.Add($"star kiss-cut luas: tanpa smooth {raw.KissGeo!.GetArea():F0} mm2, smooth 4 mm {smooth.KissGeo!.GetArea():F0} mm2");
-            Check(smooth.KissGeo!.GetArea() > raw.KissGeo!.GetArea() * 1.01, "smooth tidak mengubah garis");
+            log.Add($"star kiss-cut: halus 0 = {Nodes(raw.Kiss)} node, halus 4 mm = {Nodes(smooth.Kiss)} node");
+            Check(Nodes(smooth.Kiss) < Nodes(raw.Kiss), "halus tidak mengurangi node");
+
+            // Reduksi node pada logo kasar (target 60-80%) dan tidak ada sudut tajam.
+            var rough0 = Loader.Load(Path.Combine(dir, "rough.jpg"), 0, 40, new Cut(true, 2, 0), new Cut(true, 4, 0));
+            var rough1 = Loader.Load(Path.Combine(dir, "rough.jpg"), 0, 40, kiss, die);
+            double cutK = 1 - (double)Nodes(rough1.Kiss) / Nodes(rough0.Kiss), cutD = 1 - (double)Nodes(rough1.Die) / Nodes(rough0.Die);
+            log.Add($"rough.jpg: kiss {Nodes(rough0.Kiss)} -> {Nodes(rough1.Kiss)} node ({cutK:P0}), die {Nodes(rough0.Die)} -> {Nodes(rough1.Die)} node ({cutD:P0})");
+            Check(cutK >= 0.6 && cutD >= 0.6, "node logo kasar kurang dari 60% berkurang");
+            Check(Corners(rough1.Kiss) == 0 && Corners(rough1.Die) == 0, "masih ada sudut tajam");
+
+            // Jarak ke artwork: lingkaran 40 mm + kiss 2 mm tidak boleh lebih dekat dari offset - 0,5 mm.
+            var circle40 = items.First(s => s.Name == "circle.png");
+            Check(circle40.KissGeo!.Bounds.Width >= circle40.ArtW + 2 * (kiss.Off - 0.5), $"garis kiss terlalu dekat artwork: {circle40.KissGeo!.Bounds.Width:F2} mm");
+            // Die selalu membungkus kiss.
+            foreach (var s in items.Append(rough1))
+                Check(Geometry.Combine(s.KissGeo, s.DieGeo, GeometryCombineMode.Exclude, null).GetArea() < 1, $"{s.Name}: kiss keluar dari die");
 
             var sheets = Nest.Run(items, A4W, A4H, Margin, Gap, out int tooBig);
             Check(tooBig == 0, $"{tooBig} stiker tidak muat");
@@ -156,6 +178,10 @@ public static class SelfCheck
             return 1;
         }
     }
+
+    // Node seperti di CorelDRAW: satu per segmen (C = kurva, L = garis lurus); sudut tajam Potrace = dua L.
+    static int Nodes(string path) => path.Count(ch => ch is 'C' or 'L');
+    static int Corners(string path) => path.Count(ch => ch == 'L') / 2;
 
     static void Check(bool ok, string msg)
     {
@@ -238,6 +264,21 @@ public static class SelfCheck
             dc.DrawGeometry(Brushes.Crimson, null, g);
             dc.DrawEllipse(Brushes.White, null, new Point(150, 155), 25, 25);
         }), Path.Combine(dir, "star.jpg"), new JpegBitmapEncoder { QualityLevel = 90 });
+
+        // rough.jpg: logo bergelombang bertepi kasar (seperti foto JPG dari WhatsApp), untuk uji reduksi node
+        var rnd = new Random(7);
+        var blob = Enumerable.Range(0, 180).Select(i =>
+        {
+            double a = i * Math.PI / 90, r = 110 + 18 * Math.Sin(5 * a) + rnd.Next(-3, 4);
+            return new Point(150 + r * Math.Cos(a), 150 + r * Math.Sin(a));
+        }).ToList();
+        Save(Draw(dc =>
+        {
+            dc.DrawRectangle(Brushes.White, null, new Rect(0, 0, 300, 300));
+            var g = new StreamGeometry();
+            using (var c = g.Open()) { c.BeginFigure(blob[0], true, true); c.PolyLineTo(blob.Skip(1).ToList(), true, false); }
+            dc.DrawGeometry(Brushes.SeaGreen, null, g);
+        }), Path.Combine(dir, "rough.jpg"), new JpegBitmapEncoder { QualityLevel = 70 });
 
         // logo-on-blue.jpg: lingkaran oranye + teks hijau di latar biru, untuk uji Rapikan gambar
         Save(Draw(dc =>

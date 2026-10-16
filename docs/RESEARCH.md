@@ -159,6 +159,22 @@ Operator AP 55 merapikan gambar di Photoshop dan langkah ini lama. Langkah yang 
 
 Pemetaan ke Printech: langkah 5 (trim, offset/border, ukuran mm) sudah otomatis. Langkah 1 = angka dpi (F12). Langkah 2–4 = jendela Rapikan gambar (F15): hapus latar otomatis dari warna tepi, penghapus klik, kikis tepi 0–3 px. Hapus latar foto dengan AI dan upscale ditunda (lihat bagian 9 untuk pilihan model dan lisensinya).
 
+## 12. Reduksi node garis potong: RDP vs optimasi kurva Potrace (2026-10-16)
+- **RDP (Ramer-Douglas-Peucker)** menyederhanakan polyline (garis lurus): titik yang jaraknya ke garis penghubung di bawah epsilon dibuang. Hasilnya tetap garis lurus.
+- **Potrace** mengubah bitmap menjadi kurva Bezier. Parameter `opticurve`/`opttolerance` menggabungkan segmen kurva berurutan selama kesalahannya di bawah toleransi, jadi ini sudah "RDP untuk kurva". `alphamax` mengatur kapan sudut dianggap tajam; nilai 1,3334 berarti tidak ada sudut sama sekali.
+- **Ukuran pada pipeline app** (6 px/mm, offset 2 mm). Teks "PRINTECH":
+  - Bezier Potrace: 72 node.
+  - Bezier dipecah jadi garis: 351 titik.
+  - RDP 0,1 mm: 117 titik garis lurus.
+  - Jadi RDP menambah node dan menghasilkan gerakan pisau yang lebih patah-patah.
+- **Batas optimasi Potrace:** segmen hanya bisa digabung bila kelengkungannya searah (tanpa titik belok). Kontur bergelombang dari foto JPG tetap butuh banyak node, kecuali bentuknya dihaluskan dulu. Karena itu Printech memakai blur Gaussian (sigma = Halus) sebelum trace, ditambah penjaga jarak ke artwork.
+- **Hasil penghalusan:**
+  - Logo kasar: kiss -77%, die -72%.
+  - Lingkaran: -67 sampai -75%.
+  - Teks: -33 sampai -59%.
+  - Bintang: -42 sampai -46%.
+  - Jarak minimum ke artwork tetap di atas offset - 0,43 mm.
+
 ## Sumber
 - **Reg mark:**
   - Graphtec: [ARMS](https://www.graphteccorp.com/cutting/arms/), [Cutting Master 5](https://www.graphteccorp.com/cutting/cm5/), [manual CM5](https://mygraphtec.jp/site_download/cm5/data/CM5_Manual_ENG.pdf), [manual FC8000](https://www.manualslib.com/manual/950580/Graphtec-Fc8000-Series.html?page=103)
