@@ -64,9 +64,10 @@ Tahap sekarang: prototipe → cek kualitas → uji oleh operator. Status "produc
 - **Rapikan gambar hanya untuk raster** (PNG, JPG, SVG, PDF yang gagal dibaca vektor). File vektor (PDF/AI/CDR) tetap dirapikan di CorelDRAW supaya warna CMYK dan vektornya utuh. Rapikan hanya mengubah transparansi, tidak menggambar ulang piksel.
 - **Reduksi node garis potong (2026-10-16).** RDP literal tidak dipakai. Potrace sudah menghasilkan kurva Bezier yang dioptimasi; RDP hanya bekerja pada garis lurus, jadi kurva harus dipecah dulu. Hasil ukur: teks butuh 117 titik garis lurus untuk akurasi 0,1 mm, sedangkan Bezier cukup 72 node. Yang dipakai:
   - Tuning Potrace: `AlphaMax` 1,3334 (tidak ada sudut tajam, pisau tidak berbelok mendadak) dan `OptTolerance` 1 px = 0,17 mm (lebih banyak segmen kurva digabung).
-  - Penghalusan bentuk sebelum trace: blur Gaussian dengan sigma = nilai Halus, lalu threshold. Lekukan kecil hilang.
+  - Penghalusan bentuk sebelum trace: blur dengan sigma = nilai Halus (3 lintasan box blur, mendekati Gaussian), lalu threshold. Lekukan kecil hilang. Halus 1–2 mm paling efektif; di atas 2 mm node bisa naik lagi.
   - Penjaga jarak: garis tidak pernah lebih dekat dari offset - 0,3 mm ke artwork. Garis die selalu membungkus garis kiss.
-  - Hasil di app (kiss 2/1 mm, die 4/2 mm): rough.jpg 64/43 -> 18/13 node (-72%), lingkaran 11/10 -> 3/3 (-71%), logo.pdf 21/15 -> 7/8 (-55%), bintang 29/27 -> 16/15 (-45%), badge 9/8 -> 8/8. Sudut tajam 2 -> 0. Muat per desain 60-100 ms (Release).
+  - Hasil di app (kiss 2/1 mm, die 4/2 mm), node kiss/die sebelum -> sesudah: rough.jpg 64/43 -> 16/13 (-73%), lingkaran 11/10 -> 3/4 (-67%), logo.pdf 21/15 -> 8/7 (-58%), bintang 29/27 -> 15/17 (-43%), badge 9/8 -> 8/8. Sudut tajam 2 -> 0. Muat per desain 20-70 ms, stiker 300 mm ±1 detik (Release).
+  - Skenario uji S1–S10 beserta hasilnya: [UJI-GARIS-POTONG.md](UJI-GARIS-POTONG.md).
 - **Ditunda sampai ada kebutuhan nyata:** hapus latar foto dengan AI dan memperbesar gambar pecah. Untuk gambar pecah, cara tercepat tetap meminta file asli ke customer; angka dpi merah memberi tahu kapan perlu.
 - **Tidak dibangun:** hide copy, simpan proyek, reg mark buatan aplikasi, dan mode nametag/kartu.
 
@@ -107,7 +108,7 @@ Tahap sekarang: prototipe → cek kualitas → uji oleh operator. Status "produc
 5. Rapikan 3–5 gambar customer yang biasanya dibersihkan di Photoshop. Berapa menit dibanding Photoshop? Apa yang belum bisa dikerjakan?
 6. Export PDF, lalu buka di CorelDRAW. Apakah artwork tajam dan warnanya sama dengan file asli?
 7. Di Cutting Master 5, pilih per warna: magenta = kiss-cut, cyan = die-cut. Apakah potongannya sesuai?
-8. Cetak di Develop (A3+) dan potong fisik di Graphtec. Berapa mm selisih potongannya? Apakah gerakan pisau mulus pada teks dan logo bertepi kasar?
+8. Cetak di Develop (A3+) dan potong fisik di Graphtec. Berapa mm selisih potongannya? Apakah gerakan pisau mulus pada teks dan logo bertepi kasar? Langkah lengkap: [UJI-GARIS-POTONG.md](UJI-GARIS-POTONG.md) S10.
 9. PDF dari customer yang punya latar putih penuh: apakah garis potongnya ikut menjadi kotak?
 10. Catat setiap error atau kejanggalan, lalu kirim ke pengembang.
 
@@ -120,4 +121,4 @@ Tahap sekarang: prototipe → cek kualitas → uji oleh operator. Status "produc
 - **Membuat zip untuk operator:** `dotnet publish StickerLayout -c Release -r win-x64 --self-contained -o publish\Printech`, lalu zip folder `publish\Printech`. Folder `publish/` tidak masuk git.
 - **Menjalankan aplikasi:** `dotnet run --project StickerLayout` (perlu .NET 10). File juga bisa dibuka sebagai argumen, misalnya lewat "Open with" atau dengan menyeret file ke ikon aplikasi.
 - **File contoh:** folder `samples/` (circle.png, star.jpg, badge.svg, logo.pdf, logo.ai, logo-on-blue.jpg untuk mencoba Rapikan, dan lainnya).
-- **Cek otomatis:** `StickerLayout\bin\Debug\net10.0-windows\StickerLayout.exe --selfcheck samples`. Hasilnya ditulis ke `samples/selfcheck.txt`.
+- **Cek otomatis:** `StickerLayout\bin\Debug\net10.0-windows\StickerLayout.exe --selfcheck samples`. Hasilnya ditulis ke `samples/selfcheck.txt`. Skenario garis potong S1–S9 ikut dijalankan; satu saja gagal, exit code 1.

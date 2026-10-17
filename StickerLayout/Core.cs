@@ -285,30 +285,43 @@ public static class Loader
 
     // Haluskan kontur: blur Gaussian (sigma = Halus) lalu threshold 0,5. Lekukan kecil hilang, node berkurang,
     // pisau bergerak mulus. Hasil di-OR dengan artwork + (offset - 0,3 mm) supaya garis tidak mendekati artwork.
-    // ponytail: Gaussian langsung O(sigma) per piksel; ganti box blur 3 lintasan bila stiker > 200 mm terasa lambat.
     static bool[,] Smooth(bool[,] m, bool[,] art, Cut c)
     {
         double s = c.Smooth * PxMm;
         if (s <= 0) return m;
-        int W = m.GetLength(0), H = m.GetLength(1), r = (int)Math.Ceiling(3 * s);
-        var k = new double[2 * r + 1];
-        for (int i = -r; i <= r; i++) k[i + r] = Math.Exp(-i * i / (2 * s * s));
-        double sum = k.Sum();
-        for (int i = 0; i < k.Length; i++) k[i] /= sum;
-        var t = new double[W, H];
-        for (int j = -r; j <= r; j++) // urutan loop mengikuti memori [x, y] (y berurutan)
-            for (int x = Math.Max(0, -j); x < Math.Min(W, W - j); x++)
-                for (int y = 0; y < H; y++)
-                    if (m[x + j, y]) t[x, y] += k[j + r];
+        int W = m.GetLength(0), H = m.GetLength(1);
+        var a = new double[W * H]; // urutan [x * H + y], sama seperti bool[,]
+        for (int x = 0; x < W; x++) for (int y = 0; y < H; y++) if (m[x, y]) a[x * H + y] = 1;
+        // Gaussian didekati 3 lintasan box blur (O(1) per piksel): varians 3 * (w^2 - 1) / 12 = s^2.
+        int r = Math.Max(1, (int)Math.Round((Math.Sqrt(4 * s * s + 1) - 1) / 2));
+        var b = new double[a.Length];
+        for (int pass = 0; pass < 3; pass++)
+        {
+            Box(a, b, W, H, r, H, 1);   // sepanjang y
+            Box(b, a, H, W, r, 1, H);   // sepanjang x
+        }
         var res = Dilate(art, (int)Math.Floor((c.Off - MaxInward) * PxMm));
-        for (int x = 0; x < W; x++)
-            for (int y = 0; y < H; y++)
-            {
-                double a = 0;
-                for (int j = Math.Max(-r, -y); j <= Math.Min(r, H - 1 - y); j++) a += k[j + r] * t[x, y + j];
-                if (a >= 0.5) res[x, y] = true;
-            }
+        for (int x = 0; x < W; x++) for (int y = 0; y < H; y++) if (a[x * H + y] >= 0.5) res[x, y] = true;
         return res;
+    }
+
+    // Rata-rata berjalan lebar 2r+1 untuk `lines` baris berisi `len` sel; indeks = baris * rowStep + i * step.
+    // Di luar gambar dihitung 0, sama seperti mask kosong.
+    static void Box(double[] src, double[] dst, int lines, int len, int r, int rowStep, int step)
+    {
+        double k = 1.0 / (2 * r + 1);
+        for (int l = 0; l < lines; l++)
+        {
+            int o = l * rowStep;
+            double sum = 0;
+            for (int i = 0; i <= Math.Min(r, len - 1); i++) sum += src[o + i * step];
+            for (int i = 0; i < len; i++)
+            {
+                dst[o + i * step] = sum * k;
+                if (i + r + 1 < len) sum += src[o + (i + r + 1) * step];
+                if (i - r >= 0) sum -= src[o + (i - r) * step];
+            }
+        }
     }
 
     static IEnumerable<(int, int)> Cells(bool[,] m)

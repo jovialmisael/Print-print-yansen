@@ -1,6 +1,8 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -95,26 +97,72 @@ public static class SelfCheck
             Check(wide.LowDpi, $"circle 80 mm ({wide.Dpi:0} dpi) harus ditandai resolusi rendah");
             log.Add($"dpi: circle 40 mm = {circle.Dpi:0} dpi, 80 mm = {wide.Dpi:0} dpi (rendah)");
 
-            // Halus mengurangi node: bintang dengan halus 4 mm lebih sedikit node daripada halus 0.
-            var raw = Loader.Load(Path.Combine(dir, "star.jpg"), 0, 40, new Cut(true, 1, 0), new Cut(false, 0, 0));
-            var smooth = Loader.Load(Path.Combine(dir, "star.jpg"), 0, 40, new Cut(true, 1, 4), new Cut(false, 0, 0));
-            log.Add($"star kiss-cut: halus 0 = {Nodes(raw.Kiss)} node, halus 4 mm = {Nodes(smooth.Kiss)} node");
-            Check(Nodes(smooth.Kiss) < Nodes(raw.Kiss), "halus tidak mengurangi node");
+            // Skenario uji garis potong S1-S9 (docs/UJI-GARIS-POTONG.md). S10 dan bagian CorelDRAW di S8 diuji operator.
+            var fails = new List<string>();
+            void S(int n, string title, bool ok, string detail)
+            {
+                log.Add($"S{n} {(ok ? "LULUS" : "GAGAL")}: {title} | {detail}");
+                if (!ok) fails.Add($"S{n}");
+            }
+            var none = new Cut(false, 0, 0);
+            Sticker FromFile(string f, double w, Cut k, Cut d) => Loader.Load(Path.Combine(dir, f), 0, w, k, d);
+            Sticker Png(BitmapSource b, double w, Cut k, Cut d) => Loader.Load("uji.png", 0, w, k, d, edited: Loader.Png(b));
 
-            // Reduksi node pada logo kasar (target 60-80%) dan tidak ada sudut tajam.
-            var rough0 = Loader.Load(Path.Combine(dir, "rough.jpg"), 0, 40, new Cut(true, 2, 0), new Cut(true, 4, 0));
-            var rough1 = Loader.Load(Path.Combine(dir, "rough.jpg"), 0, 40, kiss, die);
+            // S1: logo JPG bertepi kasar.
+            var rough0 = FromFile("rough.jpg", 40, new Cut(true, 2, 0), new Cut(true, 4, 0));
+            var rough1 = FromFile("rough.jpg", 40, kiss, die);
             double cutK = 1 - (double)Nodes(rough1.Kiss) / Nodes(rough0.Kiss), cutD = 1 - (double)Nodes(rough1.Die) / Nodes(rough0.Die);
-            log.Add($"rough.jpg: kiss {Nodes(rough0.Kiss)} -> {Nodes(rough1.Kiss)} node ({cutK:P0}), die {Nodes(rough0.Die)} -> {Nodes(rough1.Die)} node ({cutD:P0})");
-            Check(cutK >= 0.6 && cutD >= 0.6, "node logo kasar kurang dari 60% berkurang");
-            Check(Corners(rough1.Kiss) == 0 && Corners(rough1.Die) == 0, "masih ada sudut tajam");
+            S(1, "logo JPG kasar: node turun >= 60%, tanpa sudut tajam", cutK >= 0.6 && cutD >= 0.6 && Corners(rough1.Kiss) + Corners(rough1.Die) == 0,
+                $"kiss {Nodes(rough0.Kiss)} -> {Nodes(rough1.Kiss)} ({cutK:P0}), die {Nodes(rough0.Die)} -> {Nodes(rough1.Die)} ({cutD:P0})");
 
-            // Jarak ke artwork: lingkaran 40 mm + kiss 2 mm tidak boleh lebih dekat dari offset - 0,5 mm.
+            // S2: lingkaran 40 mm + kiss 2 mm tetap bulat, ukuran benar, node minimal.
             var circle40 = items.First(s => s.Name == "circle.png");
-            Check(circle40.KissGeo!.Bounds.Width >= circle40.ArtW + 2 * (kiss.Off - 0.5), $"garis kiss terlalu dekat artwork: {circle40.KissGeo!.Bounds.Width:F2} mm");
-            // Die selalu membungkus kiss.
-            foreach (var s in items.Append(rough1))
-                Check(Geometry.Combine(s.KissGeo, s.DieGeo, GeometryCombineMode.Exclude, null).GetArea() < 1, $"{s.Name}: kiss keluar dari die");
+            var cb = circle40.KissGeo!.Bounds;
+            double cExp = circle40.ArtW + 2 * kiss.Off;
+            S(2, "lingkaran tetap bulat dan node minimal", Nodes(circle40.Kiss) <= 4 && Math.Abs(cb.Width - cb.Height) < 0.3 && Math.Abs(cb.Width - cExp) < 0.5,
+                $"{Nodes(circle40.Kiss)} node, {cb.Width:F2} x {cb.Height:F2} mm (harapan {cExp:F1})");
+
+            // S3: teks tebal. Node turun, tanpa sudut, huruf tidak terpotong.
+            var text = Draw(dc => dc.DrawText(new FormattedText("PRINTECH", CultureInfo.InvariantCulture, FlowDirection.LeftToRight,
+                new Typeface(new FontFamily("Arial"), FontStyles.Normal, FontWeights.Bold, FontStretches.Normal), 100, Brushes.Black, 1.0), new Point(10, 10)), 620, 140);
+            var tArt = Png(text, 60, new Cut(true, 0, 0), none);
+            var t0 = Png(text, 60, new Cut(true, 2, 0), none);
+            var t1 = Png(text, 60, kiss, none);
+            double tOut = Outside(tArt, t1);
+            S(3, "teks: node turun, tanpa sudut tajam, huruf tidak terpotong", Nodes(t1.Kiss) < Nodes(t0.Kiss) && Corners(t1.Kiss) == 0 && tOut < 0.5,
+                $"halus 0 = {Nodes(t0.Kiss)} node, halus 1 = {Nodes(t1.Kiss)} node, artwork di luar garis {tOut:F2} mm2");
+
+            // S4: offset kecil (0,5 mm) dan nol pada bintang (ujung lancip): garis tidak masuk artwork.
+            var sArt = FromFile("star.jpg", 40, new Cut(true, 0, 0), none);
+            double o05 = Outside(sArt, FromFile("star.jpg", 40, new Cut(true, 0.5, 1), none)), o0 = Outside(sArt, FromFile("star.jpg", 40, new Cut(true, 0, 1), none));
+            S(4, "offset 0,5 mm dan 0 mm: garis tidak masuk artwork", o05 < 0.5 && o0 < 3,
+                $"artwork di luar garis: offset 0,5 = {o05:F2} mm2, offset 0 = {o0:F2} mm2");
+
+            // S5: berbagai nilai Halus. Semua jalan, semua lebih sedikit node daripada Halus 0.
+            var sweep = new[] { 0, 0.5, 1, 2, 4 }.Select(h => Nodes(FromFile("rough.jpg", 40, new Cut(true, 2, h), none).Kiss)).ToArray();
+            S(5, "halus 0 / 0,5 / 1 / 2 / 4 mm: node selalu di bawah halus 0", sweep.Skip(1).All(n => n < sweep[0]), string.Join(" / ", sweep) + " node");
+
+            // S6: kiss selalu di dalam die, termasuk pengaturan tidak biasa (kiss halus 3, die halus 0).
+            var odd = new[] { FromFile("rough.jpg", 40, new Cut(true, 2, 3), new Cut(true, 4, 0)), FromFile("star.jpg", 40, new Cut(true, 2, 3), new Cut(true, 4, 0)),
+                Png(text, 60, new Cut(true, 2, 3), new Cut(true, 4, 0)) };
+            double worst = items.Append(rough1).Concat(odd).Max(s => Geometry.Combine(s.KissGeo, s.DieGeo, GeometryCombineMode.Exclude, null).GetArea());
+            S(6, "kiss selalu di dalam die", worst < 1, $"luas kiss di luar die maks {worst:F2} mm2 dari {items.Count + 4} desain");
+
+            // S7: dua bagian artwork berdekatan (celah 3-3,9 mm) tidak pecah jadi dua stiker oleh penghalusan.
+            var split = new List<string>();
+            foreach (double gap in new[] { 3.0, 3.3, 3.6, 3.9 })
+            {
+                var duo = Draw(dc => { dc.DrawEllipse(Brushes.Black, null, new Point(100, 100), 100, 100); dc.DrawEllipse(Brushes.Black, null, new Point(300 + gap * 10, 100), 100, 100); }, (int)(400 + gap * 10), 200);
+                int c0 = Png(duo, 40 + gap, new Cut(true, 2, 0), none).Kiss.Count(ch => ch == 'M'), c1 = Png(duo, 40 + gap, kiss, none).Kiss.Count(ch => ch == 'M');
+                if (c1 > c0) split.Add($"celah {gap} mm: {c0} -> {c1} kontur");
+            }
+            S(7, "dua bagian berdekatan tidak pecah", split.Count == 0, split.Count == 0 ? "celah 3,0 / 3,3 / 3,6 / 3,9 mm: kontur tidak bertambah" : string.Join("; ", split));
+
+            // S9: stiker besar 300 mm (gambar 3000 px), kiss + die.
+            var bigImg = Draw(dc => dc.DrawEllipse(Brushes.Black, null, new Point(1500, 1500), 1400, 1400), 3000, 3000);
+            var bsw = Stopwatch.StartNew();
+            var big300 = Png(bigImg, 300, kiss, die);
+            S(9, "stiker besar 300 mm dimuat < 5 detik", bsw.ElapsedMilliseconds < 5000, $"{bsw.ElapsedMilliseconds} ms, kiss {Nodes(big300.Kiss)} node, die {Nodes(big300.Die)} node");
 
             var sheets = Nest.Run(items, A4W, A4H, Margin, Gap, out int tooBig);
             Check(tooBig == 0, $"{tooBig} stiker tidak muat");
@@ -155,9 +203,12 @@ public static class SelfCheck
                 var xo = page.Resources.Elements.GetDictionary("/XObject");
                 Check(xo != null && xo.Elements.Values.Any(v => (v as PdfReference)?.Value is PdfDictionary d && d.Elements.GetName("/Subtype") == "/Form"),
                     "artwork PDF tidak tertempel sebagai vektor (Form XObject)");
-                var text = Content(page);
-                Check(text.Contains("0 1 0 0 K") && text.Contains("1 0 0 0 K"), "garis potong bukan CMYK magenta/cyan");
+                var content = Content(page);
+                Check(content.Contains("0 1 0 0 K") && content.Contains("1 0 0 0 K"), "garis potong bukan CMYK magenta/cyan");
+                int lines = Regex.Matches(content, @"(?<=\s)l(?=\s)").Count, curves = Regex.Matches(content, @"(?<=\s)c(?=\s)").Count;
+                S(8, "PDF export: garis potong hanya kurva Bezier, warna CMYK", lines == 0 && curves > 0, $"halaman {si + 1}: {curves} kurva, {lines} garis lurus");
             }
+            Check(fails.Count == 0, "skenario gagal: " + string.Join(", ", fails));
 
             Save(Export.Snapshot(Nest.Sheet(sheets[0], A4W, A4H, Margin, null, 0), A4W, A4H, 4), Path.Combine(dir, "layout-1.png"));
 
@@ -231,11 +282,18 @@ public static class SelfCheck
         enc.Save(fs);
     }
 
-    static BitmapSource Draw(Action<DrawingContext> paint)
+    // Luas (mm2) bagian dalam garis kiss a yang keluar dari garis kiss b. Bingkai disamakan lewat Off (posisi artwork).
+    static double Outside(Sticker a, Sticker b)
+    {
+        static Geometry G(Sticker s) { var g = s.KissGeo!.Clone(); g.Transform = new TranslateTransform(-s.Off, -s.Off); return g; }
+        return Geometry.Combine(G(a), G(b), GeometryCombineMode.Exclude, null).GetArea();
+    }
+
+    static BitmapSource Draw(Action<DrawingContext> paint, int w = 300, int h = 300)
     {
         var v = new DrawingVisual();
         using (var dc = v.RenderOpen()) paint(dc);
-        var rt = new RenderTargetBitmap(300, 300, 96, 96, PixelFormats.Pbgra32);
+        var rt = new RenderTargetBitmap(w, h, 96, 96, PixelFormats.Pbgra32);
         rt.Render(v);
         return rt;
     }

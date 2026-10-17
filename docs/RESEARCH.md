@@ -174,6 +174,7 @@ Pemetaan ke Printech: langkah 5 (trim, offset/border, ukuran mm) sudah otomatis.
   - Teks: -33 sampai -59%.
   - Bintang: -42 sampai -46%.
   - Jarak minimum ke artwork tetap di atas offset - 0,43 mm.
+- Angka akhir di app (blur kemudian diganti 3 lintasan box blur supaya stiker besar tetap cepat): lihat [UJI-GARIS-POTONG.md](UJI-GARIS-POTONG.md).
 
 ## Sumber
 - **Reg mark:**
