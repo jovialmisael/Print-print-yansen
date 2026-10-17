@@ -304,6 +304,10 @@
                                 <TextBox x:Name="GapBox" Style="{StaticResource Num}" Text="2" Width="58" DockPanel.Dock="Right"/>
                                 <TextBlock Text="{DynamicResource Gap}" Style="{StaticResource Label}"/>
                             </DockPanel>
+                            <DockPanel Margin="0,6,0,0" ToolTip="{DynamicResource BleedTip}">
+                                <TextBox x:Name="BleedBox" Style="{StaticResource Num}" Text="0" Width="58" DockPanel.Dock="Right"/>
+                                <TextBlock Text="{DynamicResource Bleed}" Style="{StaticResource Label}"/>
+                            </DockPanel>
                             <TextBlock Text="{DynamicResource CutUnit}" Style="{StaticResource Small}" TextWrapping="Wrap" Margin="0,8,0,0" Opacity="0.8"/>
                         </StackPanel>
                     </Expander>

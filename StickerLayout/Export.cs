@@ -35,7 +35,7 @@ public static class Export
                 var s = p.S;
                 var st = g.Save();
                 Place(g, p);
-                g.IntersectClip(ToPath(s.Outer));
+                g.IntersectClip(ToPath(s.ArtClip));
                 var form = s.Pdf == null ? null : Form(forms, s.Pdf, warn);
                 if (form != null)
                 {
@@ -44,8 +44,9 @@ public static class Export
                 }
                 else if (s.Pdf == null)
                 {
-                    if (!images.TryGetValue(s, out var img)) images[s] = img = XImage.FromStream(new MemoryStream(s.Raster));
-                    g.DrawImage(img, s.Full.X, s.Full.Y, s.Full.Width, s.Full.Height);
+                    if (!images.TryGetValue(s, out var img)) images[s] = img = XImage.FromStream(new MemoryStream(s.BleedPng ?? s.Raster));
+                    var r = s.BleedPng != null ? s.BleedRect : s.Full;
+                    g.DrawImage(img, r.X, r.Y, r.Width, r.Height);
                 }
                 else
                 {

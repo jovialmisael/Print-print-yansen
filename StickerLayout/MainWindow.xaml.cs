@@ -48,6 +48,7 @@ public partial class MainWindow : Window
     double MarginMm => D(MarginBox, 10, 0);
     Cut Kiss => new(KissOn.IsChecked == true, D(KissOff, 2, 0), D(KissSm, 0, 0));
     Cut Die => new(DieOn.IsChecked == true, D(DieOff, 4, 0), D(DieSm, 0, 0));
+    double BleedMm => D(BleedBox, 0, 0);
     Brush Dim => (Brush)FindResource("Dim");
 
     void Window_SourceInitialized(object s, EventArgs e) => App.DarkTitle(this);
@@ -114,6 +115,8 @@ public partial class MainWindow : Window
     {
         if (!Kiss.On && !Die.On) { MessageBox.Show(Lang.T("NeedCut"), App.Brand); return false; }
         if (Kiss.On && Die.On && Die.Off <= Kiss.Off) { MessageBox.Show(Lang.T("DieInside"), App.Brand); return false; }
+        // Bleed tidak boleh melewati jarak antar stiker: warna tidak pernah masuk garis potong tetangga.
+        if (BleedMm > D(GapBox, 2, 0)) { MessageBox.Show(Lang.T("BleedGap"), App.Brand); return false; }
         return true;
     }
 
@@ -155,7 +158,7 @@ public partial class MainWindow : Window
                         Status.Text = Lang.T("CorelOpen", Path.GetFileName(f));
                         await Task.Run(() => Corel.ToPdf(f));
                     }
-                    foreach (var st in Loader.LoadAll(f, D(WidthBox, 50), Kiss, Die)) items.Add(st);
+                    foreach (var st in Loader.LoadAll(f, D(WidthBox, 50), Kiss, Die, BleedMm)) items.Add(st);
                 }
                 catch (Exception ex) { MessageBox.Show($"{Path.GetFileName(f)}: {ex.Message}", Lang.T("LoadFail")); }
         }
@@ -199,7 +202,7 @@ public partial class MainWindow : Window
         if (!ok) return;
         try
         {
-            var n = Loader.Load(it.Source, it.Page, it.WidthMm, Kiss, Die, edited: result);
+            var n = Loader.Load(it.Source, it.Page, it.WidthMm, Kiss, Die, edited: result, bleed: BleedMm);
             n.Copies = it.Copies;
             n.Name = it.Name;
             items[items.IndexOf(it)] = n;
@@ -219,12 +222,14 @@ public partial class MainWindow : Window
         try
         {
             Cut kiss = Kiss, die = Die;
+            double bleed = BleedMm;
             for (int i = 0; i < items.Count; i++)
             {
                 var it = items[i];
-                if (it.WidthMm > 0 && (Math.Abs(it.LoadedW - it.WidthMm) > 1e-6 || it.LoadedKiss != kiss || it.LoadedDie != die))
+                if (it.WidthMm > 0 && (Math.Abs(it.LoadedW - it.WidthMm) > 1e-6 || it.LoadedKiss != kiss || it.LoadedDie != die
+                    || (it.Pdf == null && it.LoadedBleed != bleed)))
                 {
-                    var n = Loader.Load(it.Source, it.Page, it.WidthMm, kiss, die, edited: it.Edited);
+                    var n = Loader.Load(it.Source, it.Page, it.WidthMm, kiss, die, edited: it.Edited, bleed: bleed);
                     n.Copies = it.Copies;
                     n.Name = it.Name;
                     items[i] = n;

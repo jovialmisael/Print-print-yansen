@@ -19,7 +19,7 @@ Cara menjalankan:
 | P2 | Worker melewati batas waktu | Worker dihentikan, muncul pesan batas waktu, tidak ada worker yang tersisa | Otomatis (batas diset 1 ms) | Lulus: dihentikan dalam 20–36 ms, 0 worker tersisa |
 | P3 | Nesting paralel dijalankan 5 kali | Hasilnya identik setiap kali | Otomatis | Lulus: 5 kali, 1 hasil. Jumlah lembar dan pemakaian bahan (8 lembar A4 / 45,2%; 2 lembar / 36,1%) sama dengan versi sebelum paralel |
 | P4 | Hapus latar paralel dibandingkan dengan versi berurutan | Kikis tepi 1–3 px dan gambar tampilan identik bit per bit | Otomatis | Lulus |
-| P5 | Lama kerja di UI thread | Susun 130 stiker < 500 ms; satu langkah Rapikan pada gambar 4000×3000 < 1000 ms | Otomatis | Lulus. Release: 39 ms dan 309–350 ms. Debug: 289 ms dan 680 ms |
+| P5 | Lama kerja di UI thread | Susun 130 stiker < 500 ms; satu langkah Rapikan pada gambar 4000×3000 < 2000 ms (waktu terbaik dari 3 kali) | Otomatis | Lulus. Release: 36–39 ms dan 292–350 ms. Debug: 86–289 ms dan 680–819 ms. Angka naik bila aplikasi lain sedang memakai CPU |
 | P6 | RAM saat diam, dengan 4 file contoh | Target spesifikasi ±120 MB | Pengembang | Belum tercapai: 148–153 MB. Versi sebelum perubahan juga 148–152 MB, jadi tidak naik |
 | P7 | CDR asli, saat CorelDRAW tertutup dan saat terbuka | Desain masuk; lama proses dicatat untuk mengkalibrasi batas 30 detik | Operator | Belum diuji |
 | P8 | CorelDRAW sedang dipakai dan ada dokumen yang belum disimpan | Dokumen operator tetap utuh dan CorelDRAW tidak tertutup | Operator | Belum diuji |

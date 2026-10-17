@@ -43,7 +43,7 @@ Tahap sekarang: prototipe → cek kualitas → uji oleh operator. Status "produc
 | F6 | Susun otomatis ke banyak lembar; lembar baru dibuat otomatis | Ada |
 | F7 | Edit hasil susunan: seret, putar 90°, hapus, tombol Delete/R/panah. Muncul peringatan bila tumpang tindih atau keluar margin | Ada |
 | F8 | Zoom ala Word: Ctrl+roda (titik di bawah kursor tetap), persen, tombol "Pas layar". Alat Hand/Zoom, tahan Spasi atau tombol tengah mouse untuk geser tampilan | Ada |
-| F9 | Export PDF: artwork tetap vektor dengan warna asli. Kiss-cut = magenta 100%, die-cut = cyan 100% (CMYK) | Ada |
+| F9 | Export PDF: artwork tetap vektor dengan warna asli. Kiss-cut = magenta 100%, die-cut = cyan 100%, DeviceCMYK murni (tanpa RGB/sRGB atau profil ICC; dicek otomatis di S8) | Ada |
 | F10 | Bahasa UI: Indonesia dan English | Ada |
 | F11 | UI gaya Photoshop: tema gelap, menu, options bar, batang alat, panel lipat (Desain dengan thumbnail, Pilihan, Kertas, Garis potong), status bar dengan meter bahan dan peringatan, drag & drop file, file langsung disusun saat ditambahkan | Ada |
 | F12 | Resolusi cetak (dpi) tiap desain yang ditempel sebagai gambar. Merah dan masuk peringatan bila di bawah 150 dpi (target 300 dpi). Gunanya menangkap foto terkompres dari WhatsApp sebelum dicetak | Ada |
@@ -51,6 +51,7 @@ Tahap sekarang: prototipe → cek kualitas → uji oleh operator. Status "produc
 | F14 | Shortcut ala CorelDRAW: Ctrl+I = tambah file, F4 / Shift+F4 = pas layar (selain Ctrl+O dan Ctrl+0) | Ada |
 | F15 | Rapikan gambar (pengganti langkah Photoshop), untuk desain yang ditempel sebagai gambar: hapus latar otomatis, penghapus klik, toleransi warna, kikis tepi 0–3 px, urungkan dan kembalikan. Dibuka lewat ikon penghapus atau dobel-klik thumbnail. Garis potong dihitung ulang dari hasilnya | Ada. Di luar cakupan prototipe: tidak dikembangkan |
 | F16 | Garis potong dengan node sedikit dan kurva mulus untuk pisau Graphtec: tanpa sudut tajam; slider "Halus" sekarang juga menghaluskan bentuk sehingga node berkurang (lihat Keputusan) | Ada |
+| F17 | Bleed untuk gambar PNG/JPG (opsional, 0 = mati): warna tepi diperluas sampai bleed mm di luar garis kiss, supaya pergeseran pisau tidak menyisakan tepi putih. Maksimal sama dengan jarak antar stiker | Ada |
 
 ## 6. Keputusan
 - **Platform:** Windows, C#/.NET 10, WPF.
@@ -75,6 +76,10 @@ Tahap sekarang: prototipe → cek kualitas → uji oleh operator. Status "produc
   - 3 percobaan nesting dan hapus latar dihitung paralel dengan `Parallel.For`. Spesifikasi menyebut `Parallel.ForEachAsync`, tetapi API itu untuk kerja async (I/O), sedangkan kerja ini murni CPU. Hasilnya identik bit per bit dengan versi berurutan.
   - Hasil ukur (Release, CPU 12 thread): nesting 130 stiker 57 → 43 ms. Gambar 4000×3000: hapus latar 119 → 97 ms (flood fill tetap berurutan), kikis tepi 103 → 31 ms, tampilan 62 → 20 ms. RAM saat diam tidak berubah (versi lama 148–152 MB, versi baru 148–153 MB, 4 kali ukur).
   - Skenario uji P1–P10: [UJI-STABILITAS.md](UJI-STABILITAS.md).
+- **Prepress** (2026-10-17, spesifikasi leader bagian 3):
+  - Garis potong ditulis DeviceCMYK murni lewat operator `K`: kiss `0 1 0 0`, die `1 0 0 0`. Tidak ada operator RGB, ruang warna ICC, atau OutputIntent, jadi tidak ada konversi ke sRGB. Operator lain yang ada hanya `0 g`/`0 G` (DeviceGray), yang ditulis PDFsharp sebelum artwork vektor ditempel; itu bukan warna garis potong.
+  - Bleed: gambar bleed dibuat saat desain dimuat (maksimal 300 dpi), lalu dipakai untuk layar, preview JPG, dan PDF. Area yang dicetak = garis kiss (tanpa kiss: garis die) diperlebar sebesar bleed. Pada JPG berlatar putih, tepi luar 2 px diganti warna dari dalam supaya bleed tidak pucat. File vektor tidak diberi bleed.
+  - Bleed ikut mengisi border putih antara artwork dan garis kiss. Pakai bersama offset kecil (0–0,5 mm) untuk stiker tanpa border.
 - **Ditunda sampai ada kebutuhan nyata:** hapus latar foto dengan AI dan memperbesar gambar pecah. Untuk gambar pecah, cara tercepat tetap meminta file asli ke customer; angka dpi merah memberi tahu kapan perlu.
 - **Tidak dibangun:** hide copy, simpan proyek, reg mark buatan aplikasi, dan mode nametag/kartu.
 
@@ -98,6 +103,7 @@ Tahap sekarang: prototipe → cek kualitas → uji oleh operator. Status "produc
 - Reduksi node: target 60-80% tercapai pada logo kasar dan bentuk bulat. Teks dan bintang turun 33-59% karena sudutnya adalah detail asli. Di area cekung garis bisa bergeser keluar sampai ±0,5 mm (kiss) atau ±0,7 mm (die): border sedikit lebih lebar. Halus 0 mematikan penghalusan bentuk.
 - CDR: batas 30 detik belum dikalibrasi di PC operator. Bila CorelDRAW menggantung karena dialog yang tidak terlihat, tutup CorelDRAW lalu tambahkan file lagi.
 - Muat ulang desain dan nesting masih berjalan di UI thread (nesting 130 stiker ±43 ms; desain sangat besar bisa ±1 detik). RAM saat diam 136–153 MB, di atas target ±120 MB.
+- Bleed: tepi JPG yang sangat kasar (kompresi tinggi) bisa menyisakan garis pucat tipis di area bleed; rapikan gambarnya dulu untuk hasil terbaik. Stiker raster sangat besar (±300 mm) dengan bleed dimuat ±1–2 detik lebih lama.
 
 ## 9. Pertanyaan terbuka
 | Pertanyaan | Ditanyakan ke | Default sampai dijawab |
@@ -119,7 +125,8 @@ Tahap sekarang: prototipe → cek kualitas → uji oleh operator. Status "produc
 7. Di Cutting Master 5, pilih per warna: magenta = kiss-cut, cyan = die-cut. Apakah potongannya sesuai?
 8. Cetak di Develop (A3+) dan potong fisik di Graphtec. Berapa mm selisih potongannya? Apakah gerakan pisau mulus pada teks dan logo bertepi kasar? Langkah lengkap: [UJI-GARIS-POTONG.md](UJI-GARIS-POTONG.md) S10.
 9. PDF dari customer yang punya latar putih penuh: apakah garis potongnya ikut menjadi kotak?
-10. Catat setiap error atau kejanggalan, lalu kirim ke pengembang.
+10. Buka PDF di CorelDRAW lalu klik garis kiss dan die: warnanya harus C0 M100 Y0 K0 dan C100 M0 Y0 K0 (CMYK, bukan RGB). Cetak satu desain PNG dengan bleed 2 mm dan offset kiss 0,5 mm, lalu potong: apakah tepi stiker tetap berwarna tanpa garis putih?
+11. Catat setiap error atau kejanggalan, lalu kirim ke pengembang.
 
 ## 11. Menjalankan
 - **Untuk operator (tanpa memasang .NET):**

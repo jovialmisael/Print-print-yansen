@@ -28,11 +28,14 @@ public class Sticker
     public byte[] Raster = [];                   // gambar yang ditempel saat export bila bukan vektor
     public byte[]? Edited;                       // PNG hasil "Rapikan gambar"; dipakai menggantikan file asli
     public bool CanClean => Pdf == null;         // vektor (PDF/AI/CDR) tidak dirapikan agar warna CMYK tetap utuh
-    public double LoadedW;
+    public double LoadedW, LoadedBleed;
     public Cut LoadedKiss = null!, LoadedDie = null!;
     public double W, H;                          // kotak (mm), kelipatan Nest.Cell
     public double Off, ArtW, ArtH;               // posisi & ukuran artwork di dalam kotak (mm)
     public Rect Full;                            // seluruh sumber (halaman PDF / gambar penuh) dalam koordinat kotak (mm)
+    public byte[]? BleedPng;                     // raster + bleed (warna tepi diperluas) untuk export; null = tanpa bleed
+    public BitmapSource? BleedView;              // salinan kecil BleedPng untuk layar
+    public Rect BleedRect;                       // posisi BleedPng di kotak (mm)
     public double AreaMm2;                       // luas di dalam garis potong terluar
     public BitmapSource Preview { get; set; } = null!; // artwork yang sudah di-crop, salinan kecil untuk layar
     public int PxW;                                     // lebar artwork dalam piksel asli (untuk dpi)
@@ -46,10 +49,14 @@ public class Sticker
     public string Kiss = "", Die = "";           // path SVG garis potong (mm, koordinat kotak)
     public bool[,] Grid = null!;                 // hunian sel nesting dari garis terluar [x,y]
     public int Area;
-    Geometry? kg, dg;
+    Geometry? kg, dg, clip;
     public Geometry? KissGeo => Kiss == "" ? null : kg ??= Freeze(Geometry.Parse(Kiss));
     public Geometry? DieGeo => Die == "" ? null : dg ??= Freeze(Geometry.Parse(Die));
     public Geometry Outer => DieGeo ?? KissGeo!;
+    // Batas artwork saat digambar: garis terluar, atau dengan bleed: garis kiss (tanpa kiss: die) diperlebar bleed mm.
+    public Geometry ArtClip => clip ??= BleedPng == null ? Outer : Freeze(Geometry.Combine(KissGeo ?? DieGeo!,
+        (KissGeo ?? DieGeo!).GetWidenedPathGeometry(new Pen(null, 2 * LoadedBleed), 0.01, ToleranceType.Absolute),
+        GeometryCombineMode.Union, null, 0.01, ToleranceType.Absolute));
     static Geometry Freeze(Geometry g) { g.Freeze(); return g; }
 }
 
@@ -75,14 +82,14 @@ public static class Loader
     const double Pt = 72 / 25.4;     // point per mm
 
     // PDF multi-halaman -> satu desain per halaman. PDF/AI/CDR memakai ukuran asli; PNG/JPG/SVG memakai defWidthMm.
-    public static List<Sticker> LoadAll(string path, double defWidthMm, Cut kiss, Cut die)
+    public static List<Sticker> LoadAll(string path, double defWidthMm, Cut kiss, Cut die, double bleed = 0)
     {
         var pdf = PdfOf(path);
         int pages = 1;
         if (pdf != null)
             using (var r = new Pdfium(pdf)) pages = r.Pages;
         var res = new List<Sticker>();
-        for (int i = 0; i < pages; i++) res.Add(Load(path, i, pdf != null ? 0 : defWidthMm, kiss, die, pages > 1));
+        for (int i = 0; i < pages; i++) res.Add(Load(path, i, pdf != null ? 0 : defWidthMm, kiss, die, pages > 1, bleed: bleed));
         return res;
     }
 
@@ -94,7 +101,7 @@ public static class Loader
     };
 
     // Semua input -> bitmap penuh -> crop ke konten -> mask -> garis kiss/die (dilasi + closing) -> Potrace.
-    public static Sticker Load(string path, int page, double widthMm, Cut kiss, Cut die, bool multiPage = false, byte[]? edited = null)
+    public static Sticker Load(string path, int page, double widthMm, Cut kiss, Cut die, bool multiPage = false, byte[]? edited = null, double bleed = 0)
     {
         var ext = Path.GetExtension(path).ToLowerInvariant();
         var s = new Sticker { Source = path, Page = page, Name = Path.GetFileName(path) + (multiPage ? $" p{page + 1}" : "") };
@@ -133,13 +140,15 @@ public static class Loader
         s.WidthMm = s.LoadedW = widthMm;
         s.LoadedKiss = kiss;
         s.LoadedDie = die;
+        s.LoadedBleed = bleed;
+        bool bled = bleed > 0 && s.Pdf == null; // bleed hanya untuk raster (PNG/JPG/SVG/hasil Rapikan)
         s.ArtW = widthMm;
         s.ArtH = bb.Height * k;
 
         var small = new TransformedBitmap(crop, new ScaleTransform(s.ArtW * PxMm / bb.Width, s.ArtH * PxMm / bb.Height));
         var mask = Silhouette(small, alpha, out int mw, out int mh);
         static int Reach(Cut c) => c.On ? (int)Math.Ceiling((c.Off + c.Smooth) * PxMm) : 0;
-        int pad = Math.Max(Reach(kiss), Reach(die)) + 3, W = mw + 2 * pad, H = mh + 2 * pad;
+        int pad = Math.Max(Reach(kiss), Reach(die)) + (bled ? (int)Math.Ceiling(bleed * PxMm) : 0) + 3, W = mw + 2 * pad, H = mh + 2 * pad;
         var m = new bool[W, H];
         for (int y = 0; y < mh; y++) for (int x = 0; x < mw; x++) m[x + pad, y + pad] = mask[x, y];
 
@@ -163,7 +172,86 @@ public static class Loader
         foreach (bool c in s.Grid) if (c) s.Area++;
         s.AreaMm2 = n / (PxMm * PxMm);
         s.Full = new Rect(s.Off + (media.X - bb.X) * k, s.Off + (media.Y - bb.Y) * k, media.Width * k, media.Height * k);
+        if (bled)
+        {
+            var b = kiss.On ? kiss : die; // bleed diukur dari garis kiss; tanpa kiss dari garis die
+            (s.BleedPng, s.BleedView, s.BleedRect) = Bleed(crop, alpha, s.ArtW, s.ArtH, b.Off + b.Smooth + bleed + 1, s.Off);
+        }
         return s;
+    }
+
+    const double BleedPxMm = 300 / 25.4; // resolusi maksimal gambar bleed: 300 dpi
+    const int BleedChoke = 2;            // px tepi luar JPG yang diganti warna dari dalam (buang tepi pucat)
+
+    // Erosi 1 px (8 arah); tepi gambar dianggap latar.
+    static bool[,] Shrink(bool[,] m)
+    {
+        int w = m.GetLength(0), h = m.GetLength(1);
+        var r = new bool[w, h];
+        for (int y = 1; y < h - 1; y++)
+            for (int x = 1; x < w - 1; x++)
+                r[x, y] = m[x, y] && m[x - 1, y - 1] && m[x, y - 1] && m[x + 1, y - 1] && m[x - 1, y] && m[x + 1, y]
+                    && m[x - 1, y + 1] && m[x, y + 1] && m[x + 1, y + 1];
+        return r;
+    }
+
+    static int Count(bool[,] m) { int n = 0; foreach (bool v in m) if (v) n++; return n; }
+
+    // Auto-bleed untuk raster: warna tepi artwork diperluas keluar (dilasi warna, 8 arah) sejauh d mm, supaya
+    // pergeseran pisau tidak menyisakan tepi putih. Lubang di dalam artwork tetap warna aslinya. Saat digambar,
+    // hasilnya di-clip ke garis potong + bleed (Sticker.ArtClip).
+    // ponytail: gambar bleed dibuat ulang penuh (maks 300 dpi); stiker raster ±300 mm jadi ±1-2 detik lebih lambat.
+    // Ganti dengan lapisan bawah beresolusi rendah bila operator merasakan lambat.
+    static (byte[] png, BitmapSource view, Rect rect) Bleed(BitmapSource crop, bool alpha, double artW, double artH, double d, double off)
+    {
+        double k = Math.Min(crop.PixelWidth / artW, BleedPxMm);
+        var src = new TransformedBitmap(crop, new ScaleTransform(artW * k / crop.PixelWidth, artH * k / crop.PixelHeight));
+        var fg = Silhouette(src, alpha, out int w, out int h);
+        var (px, _, _) = Pixels(src);
+        // JPG berlatar putih: tepi luar artwork berupa campuran warna + putih (pucat). Tepi itu diganti warna dari
+        // dalam supaya bleed tidak bergaris pucat. PNG transparan tidak perlu: warna tepinya asli.
+        var core = fg;
+        if (!alpha)
+            for (int pass = 0; pass < BleedChoke; pass++) { var c = Shrink(core); if (Count(c) == 0) break; core = c; }
+        double kx = w / artW, ky = h / artH;
+        int p = (int)Math.Ceiling(d * Math.Max(kx, ky)), W = w + 2 * p, H = h + 2 * p;
+        var o = new byte[W * H * 4];
+        var front = new List<int>();
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+            {
+                if (!core[x, y]) continue;
+                int i = (y + p) * W + x + p, j = (y * w + x) * 4;
+                o[i * 4] = px[j]; o[i * 4 + 1] = px[j + 1]; o[i * 4 + 2] = px[j + 2]; o[i * 4 + 3] = 255;
+                bool edge = x == 0 || y == 0 || x == w - 1 || y == h - 1 || !core[x - 1, y] || !core[x + 1, y] || !core[x, y - 1] || !core[x, y + 1];
+                if (edge) front.Add(i);
+            }
+        // Lapis demi lapis keluar: piksel baru = rata-rata tetangga yang sudah berwarna (8 arah), jadi satu piksel
+        // tepi yang menyimpang tidak membentuk garis panjang.
+        for (int layer = 0; layer < p + BleedChoke && front.Count > 0; layer++)
+        {
+            var next = new List<int>();
+            foreach (int i in front)
+                for (int v = Math.Max(0, i / W - 1); v <= Math.Min(H - 1, i / W + 1); v++)
+                    for (int u = Math.Max(0, i % W - 1); u <= Math.Min(W - 1, i % W + 1); u++)
+                        if (o[(v * W + u) * 4 + 3] == 0) { o[(v * W + u) * 4 + 3] = 1; next.Add(v * W + u); } // 1 = antre
+            foreach (int j in next)
+            {
+                int b = 0, g = 0, r = 0, n = 0;
+                for (int v = Math.Max(0, j / W - 1); v <= Math.Min(H - 1, j / W + 1); v++)
+                    for (int u = Math.Max(0, j % W - 1); u <= Math.Min(W - 1, j % W + 1); u++)
+                    {
+                        int t = (v * W + u) * 4;
+                        if (o[t + 3] == 255) { b += o[t]; g += o[t + 1]; r += o[t + 2]; n++; }
+                    }
+                o[j * 4] = (byte)(b / n); o[j * 4 + 1] = (byte)(g / n); o[j * 4 + 2] = (byte)(r / n);
+            }
+            foreach (int j in next) o[j * 4 + 3] = 255;
+            front = next;
+        }
+        var bmp = BitmapSource.Create(W, H, 96, 96, PixelFormats.Bgra32, null, o, W * 4);
+        bmp.Freeze();
+        return (Png(bmp), Proxy(bmp), new Rect(off - p / kx, off - p / ky, W / kx, H / ky));
     }
 
     // PDFium merender CropBox; PDFsharp menempel MediaBox. Kembalikan posisi MediaBox relatif terhadap render.
@@ -601,10 +689,11 @@ public static class Nest
             var s = p.S;
             var c = new Canvas { Width = s.W, Height = s.H, Background = Brushes.Transparent, Tag = p, RenderTransform = Xf(p) };
             // artwork di-clip ke garis potongnya sendiri agar tidak menimpa stiker tetangga
-            var art = new Canvas { Width = s.W, Height = s.H, Clip = s.Outer, IsHitTestVisible = false };
-            var img = new Image { Source = s.Preview, Width = s.ArtW, Height = s.ArtH, Stretch = Stretch.Fill };
-            Canvas.SetLeft(img, s.Off);
-            Canvas.SetTop(img, s.Off);
+            var art = new Canvas { Width = s.W, Height = s.H, Clip = s.ArtClip, IsHitTestVisible = false };
+            var (src, r) = s.BleedView is { } bv ? (bv, s.BleedRect) : (s.Preview, new Rect(s.Off, s.Off, s.ArtW, s.ArtH));
+            var img = new Image { Source = src, Width = r.Width, Height = r.Height, Stretch = Stretch.Fill };
+            Canvas.SetLeft(img, r.X);
+            Canvas.SetTop(img, r.Y);
             art.Children.Add(img);
             c.Children.Add(art);
             if (s.KissGeo is { } k) c.Children.Add(new System.Windows.Shapes.Path { Data = k, Stroke = KissBrush, StrokeThickness = 0.4, IsHitTestVisible = false });
