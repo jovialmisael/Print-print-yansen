@@ -87,6 +87,23 @@ public static class SelfCheck
             cs.EraseFromBorder(32);
             Check(cs.Alpha(0)[155 * cs.W + 150] > 16, "hapus latar ikut menghapus lubang di tengah bintang");
 
+            // CDR lewat proses worker: tanpa CorelDRAW muncul pesan NoCorel dan aplikasi tidak crash;
+            // worker yang melewati batas waktu dihentikan paksa.
+            var fakeCdr = Path.Combine(dir, "tidak-ada.cdr");
+            var cdrSw = Stopwatch.StartNew();
+            string cdrMsg = "dilewati (CorelDRAW terpasang)";
+            if (Type.GetTypeFromProgID("CorelDRAW.Application") == null)
+            {
+                try { Corel.ToPdf(fakeCdr); cdrMsg = "tanpa error"; } catch (InvalidOperationException ex) { cdrMsg = ex.Message; }
+                Check(cdrMsg == Lang.T("NoCorel"), "worker CDR tanpa CorelDRAW: " + cdrMsg);
+            }
+            long noCorelMs = cdrSw.ElapsedMilliseconds;
+            bool killed = false;
+            cdrSw.Restart();
+            try { Corel.ToPdf(fakeCdr, timeoutMs: 1); } catch (TimeoutException) { killed = true; }
+            Check(killed, "worker CDR tidak dihentikan setelah batas waktu");
+            log.Add($"cdr worker: {cdrMsg} ({noCorelMs} ms); batas 1 ms -> dihentikan ({cdrSw.ElapsedMilliseconds} ms)");
+
             // A3+ = kertas stiker Develop (AP 55).
             Check(Paper.Sizes.TryGetValue("A3+", out var a3p) && a3p == (320, 480), "preset A3+ 320x480 tidak ada");
             // DPI hanya untuk desain yang ditempel sebagai gambar; vektor tidak punya DPI.

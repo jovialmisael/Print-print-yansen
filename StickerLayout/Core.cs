@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Text;
@@ -387,22 +389,53 @@ public static class Loader
 }
 
 // CDR dibuka lewat CorelDRAW yang terpasang di PC operator, lalu di-publish ke PDF.
-// ponytail: belum diuji (CorelDRAW tidak ada di PC pengembangan); fallback = export CDR ke PDF manual.
+// COM berjalan di proses worker (exe ini dengan --cdr2pdf). Bila CorelDRAW menggantung (misalnya ada dialog),
+// worker dihentikan setelah batas waktu dan Printech tetap jalan. CorelDRAW sendiri tidak dimatikan,
+// jadi pekerjaan operator yang belum disimpan tetap aman.
+// ponytail: belum diuji dengan CorelDRAW asli (tidak ada di PC pengembangan); batas 30 detik dikalibrasi di PC operator.
 public static class Corel
 {
-    static readonly Dictionary<string, string> cache = [];
+    public const int TimeoutMs = 30_000;
+    static readonly ConcurrentDictionary<string, string> cache = new();
 
-    public static string ToPdf(string cdr)
+    public static string ToPdf(string cdr, int timeoutMs = TimeoutMs)
     {
         if (cache.TryGetValue(cdr, out var done) && File.Exists(done)) return done;
-        var t = Type.GetTypeFromProgID("CorelDRAW.Application") ?? throw new InvalidOperationException(Lang.T("NoCorel"));
-        dynamic app = Activator.CreateInstance(t)!;
         var pdf = Path.Combine(App.Temp, Guid.NewGuid() + ".pdf");
-        Directory.CreateDirectory(Path.GetDirectoryName(pdf)!);
-        dynamic doc = app.OpenDocument(cdr);
-        try { doc.PublishToPDF(pdf); }
-        finally { doc.Close(); }
-        return cache[cdr] = pdf;
+        Directory.CreateDirectory(App.Temp);
+        var psi = new ProcessStartInfo(Environment.ProcessPath!) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardError = true };
+        foreach (var a in new[] { "--cdr2pdf", cdr, pdf }) psi.ArgumentList.Add(a);
+        using var p = Process.Start(psi)!;
+        var err = p.StandardError.ReadToEndAsync();
+        if (!p.WaitForExit(timeoutMs))
+        {
+            p.Kill();
+            p.WaitForExit();
+            throw new TimeoutException(Lang.T("CorelTimeout", timeoutMs / 1000));
+        }
+        return p.ExitCode switch
+        {
+            0 when File.Exists(pdf) => cache[cdr] = pdf,
+            2 => throw new InvalidOperationException(Lang.T("NoCorel")),
+            _ => throw new InvalidOperationException(Lang.T("CorelFail", err.Result.Trim())),
+        };
+    }
+
+    // Dijalankan di proses worker (main thread STA). Exit code: 0 = berhasil, 2 = CorelDRAW tidak terpasang,
+    // 1 = error lain (pesan di stderr).
+    public static int Worker(string cdr, string pdf)
+    {
+        var t = Type.GetTypeFromProgID("CorelDRAW.Application");
+        if (t == null) return 2;
+        try
+        {
+            dynamic app = Activator.CreateInstance(t)!;
+            dynamic doc = app.OpenDocument(cdr);
+            try { doc.PublishToPDF(pdf); }
+            finally { doc.Close(); }
+            return 0;
+        }
+        catch (Exception ex) { Console.Error.Write(ex.Message); return 1; }
     }
 }
 
@@ -439,16 +472,21 @@ public static class Nest
     }
 
     // ponytail: greedy first-fit di grid sel, 4 rotasi, lintas lembar, 3 urutan dicoba. Bukan optimal;
-    // ganti dengan NFP/SVGnest bila pemakaian bahan kurang.
+    // ganti dengan NFP/SVGnest bila pemakaian bahan kurang. Masih di UI thread (±50 ms untuk 100 stiker);
+    // pindah ke background bila operator merasakan jeda.
     public static List<List<Placed>> Run(IEnumerable<Sticker> stickers, double cw, double ch, double margin, double gap, out int tooBig)
     {
         var items = stickers.SelectMany(s => Enumerable.Repeat(s, Math.Max(0, s.Copies))).ToList();
+        Func<Sticker, double>[] keys = [s => s.Area, s => Math.Max(s.W, s.H), s => s.W + s.H];
+        // 3 percobaan dihitung paralel (kerja CPU). Once hanya membaca Sticker dan memakai cache sendiri.
+        var trials = new (List<List<Placed>> r, int big)[keys.Length];
+        Parallel.For(0, keys.Length, i => trials[i] = (Once(items.OrderByDescending(keys[i]).ToList(), cw, ch, margin, gap, out int big), big));
+        // Dipilih menurut urutan percobaan, bukan urutan selesai: hasil sama setiap kali.
         List<List<Placed>> best = [];
         double bestScore = double.MaxValue;
         tooBig = 0;
-        foreach (var key in new Func<Sticker, double>[] { s => s.Area, s => Math.Max(s.W, s.H), s => s.W + s.H })
+        foreach (var (r, big) in trials)
         {
-            var r = Once(items.OrderByDescending(key).ToList(), cw, ch, margin, gap, out int big);
             double score = r.Count * 1e6 + (r.Count == 0 ? 0 : r[^1].Max(p => p.Y + p.BH));
             if (score < bestScore) { best = r; bestScore = score; tooBig = big; }
         }

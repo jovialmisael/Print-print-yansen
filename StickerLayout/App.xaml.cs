@@ -16,6 +16,7 @@ public partial class App : Application
     {
         base.OnStartup(e);
         if (e.Args.Length > 1 && e.Args[0] == "--selfcheck") { Shutdown(SelfCheck.Run(e.Args[1])); return; }
+        if (e.Args.Length > 2 && e.Args[0] == "--cdr2pdf") { Shutdown(Corel.Worker(e.Args[1], e.Args[2])); return; } // proses worker CorelDRAW
         // Error tak terduga: tampilkan pesan, aplikasi tetap jalan (layout operator tidak hilang).
         DispatcherUnhandledException += (_, ev) =>
         {

@@ -139,7 +139,7 @@ public partial class MainWindow : Window
     }
 
     // File baru langsung disusun: satu klik lebih sedikit untuk operator.
-    void AddFiles(IEnumerable<string> files)
+    async void AddFiles(IEnumerable<string> files)
     {
         if (!CutsValid()) return;
         int before = items.Count;
@@ -147,11 +147,20 @@ public partial class MainWindow : Window
         try
         {
             foreach (var f in files)
-                try { foreach (var st in Loader.LoadAll(f, D(WidthBox, 50), Kiss, Die)) items.Add(st); }
+                try
+                {
+                    // CDR: CorelDRAW bekerja di proses worker; UI tetap jalan selama menunggu.
+                    if (Path.GetExtension(f).Equals(".cdr", StringComparison.OrdinalIgnoreCase))
+                    {
+                        Status.Text = Lang.T("CorelOpen", Path.GetFileName(f));
+                        await Task.Run(() => Corel.ToPdf(f));
+                    }
+                    foreach (var st in Loader.LoadAll(f, D(WidthBox, 50), Kiss, Die)) items.Add(st);
+                }
                 catch (Exception ex) { MessageBox.Show($"{Path.GetFileName(f)}: {ex.Message}", Lang.T("LoadFail")); }
         }
         finally { Mouse.OverrideCursor = null; }
-        if (items.Count == before) return;
+        if (items.Count == before) { Status.Text = status; return; }
         bool first = sheets.Count == 0;
         Arrange();
         if (first) Fit();

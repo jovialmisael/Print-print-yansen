@@ -35,7 +35,7 @@ Tahap sekarang: prototipe → cek kualitas → uji oleh operator. Status "produc
 ## 5. Kebutuhan fungsional
 | ID | Kebutuhan | Status v2 |
 |----|-----------|-----------|
-| F1 | Input PDF, AI (PDF-compatible), CDR (lewat CorelDRAW yang terpasang), PNG, JPG, SVG. PDF multi-halaman = satu desain per halaman | Ada. Jalur CDR belum diuji |
+| F1 | Input PDF, AI (PDF-compatible), CDR (lewat CorelDRAW yang terpasang, di proses worker terpisah yang dihentikan setelah 30 detik bila CorelDRAW tidak merespons), PNG, JPG, SVG. PDF multi-halaman = satu desain per halaman | Ada. Jalur CDR belum diuji |
 | F2 | Crop otomatis ke batas artwork. PDF memakai ukuran asli. Lebar dan jumlah bisa diatur per desain | Ada |
 | F3 | Garis kiss-cut dan die-cut, masing-masing dengan offset dan penghalus (smooth) sendiri | Ada |
 | F4 | Kertas: preset A0–A6, **A3+ 320×480 (default)**, SRA3, SRA4, custom, dan tombol putar orientasi | Ada |
@@ -70,6 +70,10 @@ Tahap sekarang: prototipe → cek kualitas → uji oleh operator. Status "produc
   - Penjaga jarak: garis tidak pernah lebih dekat dari offset - 0,3 mm ke artwork. Garis die selalu membungkus garis kiss.
   - Hasil di app (kiss 2/1 mm, die 4/2 mm), node kiss/die sebelum -> sesudah: rough.jpg 64/43 -> 16/13 (-73%), lingkaran 11/10 -> 3/4 (-67%), logo.pdf 21/15 -> 8/7 (-58%), bintang 29/27 -> 15/17 (-43%), badge 9/8 -> 8/8. Sudut tajam 2 -> 0. Muat per desain 20-70 ms, stiker 300 mm ±1 detik (Release).
   - Skenario uji S1–S11 beserta hasilnya: [UJI-GARIS-POTONG.md](UJI-GARIS-POTONG.md).
+- **Stabilitas dan performa** (2026-10-17, spesifikasi leader bagian 2):
+  - CorelDRAW COM berjalan di proses worker (exe yang sama dengan argumen `--cdr2pdf`), bukan di proses utama. Selama menunggu, UI tetap jalan. Lewat 30 detik, worker dihentikan dan operator mendapat pesan; Printech tetap jalan. CorelDRAW sendiri tidak dimatikan supaya pekerjaan operator yang belum disimpan aman.
+  - 3 percobaan nesting dan hapus latar dihitung paralel dengan `Parallel.For`. Spesifikasi menyebut `Parallel.ForEachAsync`, tetapi API itu untuk kerja async (I/O), sedangkan kerja ini murni CPU. Hasilnya identik bit per bit dengan versi berurutan.
+  - Hasil ukur (Release, CPU 12 thread): nesting 130 stiker 57 → 43 ms. Gambar 4000×3000: hapus latar 119 → 97 ms (flood fill tetap berurutan), kikis tepi 103 → 31 ms, tampilan 62 → 20 ms. RAM saat diam tetap 136 MB.
 - **Ditunda sampai ada kebutuhan nyata:** hapus latar foto dengan AI dan memperbesar gambar pecah. Untuk gambar pecah, cara tercepat tetap meminta file asli ke customer; angka dpi merah memberi tahu kapan perlu.
 - **Tidak dibangun:** hide copy, simpan proyek, reg mark buatan aplikasi, dan mode nametag/kartu.
 
@@ -91,6 +95,8 @@ Tahap sekarang: prototipe → cek kualitas → uji oleh operator. Status "produc
 - Warna di layar hanya preview. Akurasi warna dijaga di file export.
 - Rapikan gambar: latar foto yang ramai (bukan warna polos) belum bisa dihapus otomatis; gambar di atas 4000 px diperkecil ke 4000 px saat dirapikan.
 - Reduksi node: target 60-80% tercapai pada logo kasar dan bentuk bulat. Teks dan bintang turun 33-59% karena sudutnya adalah detail asli. Di area cekung garis bisa bergeser keluar sampai ±0,5 mm (kiss) atau ±0,7 mm (die): border sedikit lebih lebar. Halus 0 mematikan penghalusan bentuk.
+- CDR: batas 30 detik belum dikalibrasi di PC operator. Bila CorelDRAW menggantung karena dialog yang tidak terlihat, tutup CorelDRAW lalu tambahkan file lagi.
+- Muat ulang desain dan nesting masih berjalan di UI thread (nesting 130 stiker ±43 ms; desain sangat besar bisa ±1 detik). RAM saat diam 136 MB, sedikit di atas target ±120 MB.
 
 ## 9. Pertanyaan terbuka
 | Pertanyaan | Ditanyakan ke | Default sampai dijawab |
@@ -103,7 +109,7 @@ Tahap sekarang: prototipe → cek kualitas → uji oleh operator. Status "produc
 | Garis potong di Cutting Master 5 dikenali lewat warna atau layer | operator | warna (magenta/cyan) |
 
 ## 10. Checklist uji operator
-1. Tambahkan file CDR. Apakah CorelDRAW terbuka dan desainnya ikut masuk?
+1. Tambahkan file CDR. Apakah CorelDRAW terbuka dan desainnya ikut masuk? Berapa detik prosesnya, dan apakah Printech tetap bisa dipakai selama menunggu?
 2. Tarik file dari Explorer ke jendela Printech. Coba alat Geser tampilan (H atau tahan Spasi), Zoom (Z), dan shortcut Ctrl+I, F4, R, Delete, panah.
 3. Export preview JPG, kirim ke WhatsApp. Apakah cukup jelas untuk konfirmasi ke customer?
 4. Masukkan foto yang diterima lewat WhatsApp. Apakah angka dpi merah muncul untuk file yang hasil cetaknya memang pecah?

@@ -18,6 +18,7 @@ public sealed class CleanImage
     readonly byte[] px;                    // BGRA; kanal alpha ditulis ulang setiap Compose
     readonly byte[] a0;                    // alpha asli
     readonly byte[] a;                     // alpha kerja (dipakai ulang)
+    byte[]? b;                             // buffer kikis tepi, dibuat saat pertama dipakai
     readonly BitArray erased;              // gabungan semua langkah
     readonly List<BitArray> steps = [];    // piksel yang dihapus per langkah, untuk undo
     int erasedCount;
@@ -72,6 +73,7 @@ public sealed class CleanImage
     public int EraseFromBorder(int tol)
     {
         if (BorderColor() is not { } bg) return 0;
+        var near = NearMask(bg, tol);
         var step = new BitArray(W * H);
         var seen = new BitArray(W * H);
         var st = new Stack<int>();
@@ -81,7 +83,7 @@ public sealed class CleanImage
             if (seen[i]) return;
             seen[i] = true;
             if (Clear(i)) st.Push(i);
-            else if (Near(i, bg, tol)) { step[i] = true; n++; st.Push(i); }
+            else if (near[i]) { step[i] = true; n++; st.Push(i); }
         }
         for (int x = 0; x < W; x++) { Push(x); Push((H - 1) * W + x); }
         for (int y = 1; y < H - 1; y++) { Push(y * W); Push(y * W + W - 1); }
@@ -109,6 +111,15 @@ public sealed class CleanImage
         Push(i0);
         Flood(st, Push);
         return Commit(step, n);
+    }
+
+    // Piksel yang warnanya dekat c, dihitung paralel per baris (kerja CPU). Flood fill tetap berurutan
+    // dan hanya membaca hasilnya.
+    bool[] NearMask(Color c, int tol)
+    {
+        var m = new bool[W * H];
+        Parallel.For(0, H, y => { for (int i = y * W, end = i + W; i < end; i++) m[i] = Near(i, c, tol); });
+        return m;
     }
 
     void Flood(Stack<int> st, Action<int> push)
@@ -158,29 +169,30 @@ public sealed class CleanImage
 
     // Alpha akhir: asli, dikurangi yang dihapus, lalu tepi dikikis `contract` px (buang halo).
     // Di luar gambar dianggap opak supaya artwork yang menyentuh tepi tidak ikut terkikis.
+    // Dihitung paralel per baris; tiap lintasan kikis membaca `a` dan menulis ke buffer `b`.
     public byte[] Alpha(int contract)
     {
-        for (int i = 0; i < a.Length; i++) a[i] = erased[i] ? (byte)0 : a0[i];
-        var clear = new List<int>();
+        Parallel.For(0, H, y => { for (int i = y * W, end = i + W; i < end; i++) a[i] = erased[i] ? (byte)0 : a0[i]; });
+        if (contract == 0) return a;
+        var t = b ??= new byte[W * H];
         for (int pass = 0; pass < contract; pass++)
         {
-            clear.Clear();
-            for (int y = 0; y < H; y++)
-                for (int x = 0; x < W; x++)
-                {
-                    int i = y * W + x;
-                    if (a[i] <= 16) continue;
-                    for (int dy = -1; dy <= 1; dy++)
-                        for (int dx = -1; dx <= 1; dx++)
-                        {
-                            int u = x + dx, v = y + dy;
-                            if (u >= 0 && v >= 0 && u < W && v < H && a[v * W + u] <= 16) { clear.Add(i); goto next; }
-                        }
-                next:;
-                }
-            foreach (int i in clear) a[i] = 0;
+            Parallel.For(0, H, y =>
+            {
+                for (int x = 0, i = y * W; x < W; x++, i++) t[i] = a[i] > 16 && Edge(x, y) ? (byte)0 : a[i];
+            });
+            Buffer.BlockCopy(t, 0, a, 0, a.Length);
         }
         return a;
+    }
+
+    // Ada tetangga (8 arah) yang transparan.
+    bool Edge(int x, int y)
+    {
+        for (int v = Math.Max(0, y - 1); v <= Math.Min(H - 1, y + 1); v++)
+            for (int u = Math.Max(0, x - 1); u <= Math.Min(W - 1, x + 1); u++)
+                if (a[v * W + u] <= 16) return true;
+        return false;
     }
 
     public int OpaqueCount(int contract) => Alpha(contract).Count(v => v > 16);
@@ -188,20 +200,21 @@ public sealed class CleanImage
     public byte[] Compose(int contract)
     {
         var al = Alpha(contract);
-        for (int i = 0; i < al.Length; i++) px[i * 4 + 3] = al[i];
+        Parallel.For(0, H, y => { for (int i = y * W, end = i + W; i < end; i++) px[i * 4 + 3] = al[i]; });
         return px;
     }
 
     // Versi kecil untuk layar (nearest neighbor) supaya gambar besar tetap ringan ditampilkan.
     public void ComposeView(int contract, byte[] dst, int dw, int dh)
     {
-        var s32 = MemoryMarshal.Cast<byte, int>(Compose(contract));
-        var d32 = MemoryMarshal.Cast<byte, int>(dst.AsSpan());
-        for (int y = 0; y < dh; y++)
+        var src = Compose(contract);
+        Parallel.For(0, dh, y =>
         {
+            var s32 = MemoryMarshal.Cast<byte, int>(src.AsSpan());
+            var d32 = MemoryMarshal.Cast<byte, int>(dst.AsSpan(y * dw * 4, dw * 4));
             int row = (int)((long)y * H / dh) * W;
-            for (int x = 0; x < dw; x++) d32[y * dw + x] = s32[row + (int)((long)x * W / dw)];
-        }
+            for (int x = 0; x < dw; x++) d32[x] = s32[row + (int)((long)x * W / dw)];
+        });
     }
 
     public byte[] ToPng(int contract)
