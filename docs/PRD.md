@@ -1,11 +1,13 @@
 # PRD — Printech (Layout Stiker Print & Cut)
 
-Status: Draf 3 · Tanggal: 2026-10-14 · Nama sementara: "Printech" (dikonfirmasi 2026-10-13).
+Status: Draf 4 · Tanggal: 2026-10-17 · Nama sementara: "Printech" (dikonfirmasi 2026-10-13).
 
 ## 1. Tujuan
 Ini alat internal toko. Operator mengubah file dari customer menjadi layout stiker yang siap dicetak dan dipotong. Layout harus hemat bahan dan warnanya akurat.
 
 Tahap sekarang: prototipe → cek kualitas → uji oleh operator. Status "production" tercapai bila tidak ada error lagi.
+
+**Cakupan prototipe** (2026-10-17): automasi layout saja, yaitu import file, garis potong otomatis, susun otomatis, dan export PDF/preview JPG. Estimasi pengerjaan 2 minggu. Dokumentasi disimpan di repo GitHub ini.
 
 **Tujuan utama: mempercepat proses** (konfirmasi 2026-10-14). Saat ini Photoshop dipakai hanya untuk merapikan gambar, bukan untuk layout, dan pekerjaan itu memakan banyak waktu. Printech tidak bertujuan mengurangi pemakaian Adobe.
 
@@ -47,7 +49,7 @@ Tahap sekarang: prototipe → cek kualitas → uji oleh operator. Status "produc
 | F12 | Resolusi cetak (dpi) tiap desain yang ditempel sebagai gambar. Merah dan masuk peringatan bila di bawah 150 dpi (target 300 dpi). Gunanya menangkap foto terkompres dari WhatsApp sebelum dicetak | Ada |
 | F13 | Export preview JPG (Ctrl+Shift+E): satu JPG per lembar, sisi panjang ±2000 px, untuk konfirmasi ke customer lewat WhatsApp | Ada |
 | F14 | Shortcut ala CorelDRAW: Ctrl+I = tambah file, F4 / Shift+F4 = pas layar (selain Ctrl+O dan Ctrl+0) | Ada |
-| F15 | Rapikan gambar (pengganti langkah Photoshop), untuk desain yang ditempel sebagai gambar: hapus latar otomatis, penghapus klik, toleransi warna, kikis tepi 0–3 px, urungkan dan kembalikan. Dibuka lewat ikon penghapus atau dobel-klik thumbnail. Garis potong dihitung ulang dari hasilnya | Ada |
+| F15 | Rapikan gambar (pengganti langkah Photoshop), untuk desain yang ditempel sebagai gambar: hapus latar otomatis, penghapus klik, toleransi warna, kikis tepi 0–3 px, urungkan dan kembalikan. Dibuka lewat ikon penghapus atau dobel-klik thumbnail. Garis potong dihitung ulang dari hasilnya | Ada. Di luar cakupan prototipe: tidak dikembangkan |
 | F16 | Garis potong dengan node sedikit dan kurva mulus untuk pisau Graphtec: tanpa sudut tajam; slider "Halus" sekarang juga menghaluskan bentuk sehingga node berkurang (lihat Keputusan) | Ada |
 
 ## 6. Keputusan
