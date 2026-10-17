@@ -284,6 +284,34 @@ public static class SelfCheck
             (probe[1].X, probe[1].Y) = (ox, oy);
             Nest.Check(probe, A4W, A4H, Margin);
 
+            // Snap magnet: stiker yang dijatuhkan di atas tetangganya, atau diputar, pindah ke posisi kosong terdekat.
+            var sa = new Placed { S = circle40, X = Margin, Y = Margin };
+            var sb = new Placed { S = pdfItem, X = Margin + 3, Y = Margin + 3 };
+            var two = new List<Placed> { sa, sb };
+            bool snapped = Nest.Snap(two, sb, A4W, A4H, Margin, Gap);
+            int afterDrop = Nest.Check(two, A4W, A4H, Margin);
+            double jump = Math.Sqrt(Math.Pow(sb.X - Margin - 3, 2) + Math.Pow(sb.Y - Margin - 3, 2));
+            sb.Rot = 90;
+            bool snappedRot = Nest.Snap(two, sb, A4W, A4H, Margin, Gap);
+            int afterRot = Nest.Check(two, A4W, A4H, Margin);
+            Check(snapped && afterDrop == 0 && snappedRot && afterRot == 0, $"snap gagal: jatuh {afterDrop} tabrakan, putar {afterRot} tabrakan");
+            log.Add($"snap: dijatuhkan di atas tetangga -> pindah {jump:F0} mm, 0 tabrakan; diputar -> 0 tabrakan");
+
+            // Indikator bahan: bentuk reguler vs irregular, warna target, preset valid, Print Ticket 1 halaman A4.
+            var fillOf = items.ToDictionary(s => s.Name, s => s.Fill);
+            Check(fillOf["badge.svg"] > 0.85 && Math.Abs(fillOf["circle.png"] - Math.PI / 4) < 0.03 && fillOf["star.jpg"] < 0.75,
+                $"isi bentuk salah: badge {fillOf["badge.svg"]:F2}, circle {fillOf["circle.png"]:F2}, star {fillOf["star.jpg"]:F2}");
+            Check(Yield.Level(0.76, true) == 2 && Yield.Level(0.72, true) == 1 && Yield.Level(0.65, true) == 0
+                && Yield.Level(0.61, false) == 2 && Yield.Level(0.56, false) == 1 && Yield.Level(0.50, false) == 0, "batas warna bahan salah");
+            Check(Presets.Material.Values.All(m => (m.Kiss.On || m.Die.On) && (!(m.Kiss.On && m.Die.On) || m.Die.Off > m.Kiss.Off) && m.Gap >= 0),
+                "preset bahan tidak valid");
+            var ticket = Path.Combine(dir, "print-ticket.pdf");
+            Export.Ticket(ticket, "A4", sheets, A4W, sheets.Select(_ => A4H).ToList(), Margin, ["uji"]);
+            using (var tk = PdfReader.Open(ticket, PdfDocumentOpenMode.Import))
+                Check(tk.PageCount == 1 && Math.Abs(tk.Pages[0].Width.Millimeter - 210) < 0.5, "Print Ticket bukan 1 halaman A4");
+            log.Add($"bahan: isi bentuk badge {fillOf["badge.svg"]:F2}, circle {fillOf["circle.png"]:F2}, star {fillOf["star.jpg"]:F2}; "
+                + $"lembar 1 {Yield.Use(sheets[0], A4W, A4H, Margin):P0} ({(Yield.Regular(sheets[0]) ? "reguler" : "irregular")}); Print Ticket 1 halaman A4");
+
             var heights = sheets.Select(_ => A4H).ToList();
             var outPdf = Path.Combine(dir, "export.pdf");
             var warn = Export.Pdf(outPdf, sheets, A4W, heights);

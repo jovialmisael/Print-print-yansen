@@ -52,6 +52,9 @@ Tahap sekarang: prototipe → cek kualitas → uji oleh operator. Status "produc
 | F15 | Rapikan gambar (pengganti langkah Photoshop), untuk desain yang ditempel sebagai gambar: hapus latar otomatis, penghapus klik, toleransi warna, kikis tepi 0–3 px, urungkan dan kembalikan. Dibuka lewat ikon penghapus atau dobel-klik thumbnail. Garis potong dihitung ulang dari hasilnya | Ada. Di luar cakupan prototipe: tidak dikembangkan |
 | F16 | Garis potong dengan node sedikit dan kurva mulus untuk pisau Graphtec: tanpa sudut tajam; slider "Halus" sekarang juga menghaluskan bentuk sehingga node berkurang (lihat Keputusan) | Ada |
 | F17 | Bleed untuk gambar PNG/JPG (opsional, 0 = mati): warna tepi diperluas sampai bleed mm di luar garis kiss, supaya pergeseran pisau tidak menyisakan tepi putih. Maksimal sama dengan jarak antar stiker | Ada |
+| F18 | Indikator bahan: "Bahan terpakai" dihitung terhadap area kertas di dalam margin, berwarna hijau/kuning/merah menurut target bentuk reguler (70–85%, hijau ≥ 75%) atau irregular (55–70%, hijau ≥ 60%). Yield per lembar ("24 pcs / lembar A3+") dan sisa bahan | Ada |
+| F19 | Snap magnet: stiker yang digeser atau diputar pindah ke posisi kosong terdekat (tidak bertabrakan, jarak antar stiker tetap). Preset bahan (Vinyl kiss-cut, Chromo die-cut, Akrilik/tebal) mengisi garis potong, margin, dan jarak | Ada |
+| F20 | Print Ticket: PDF A4 1 halaman berisi total lembar, total pcs, efisiensi bahan, rincian per lembar dan per desain, serta pengaturan potong, untuk lampiran nota kasir/SPK | Ada |
 
 ## 6. Keputusan
 - **Platform:** Windows, C#/.NET 10, WPF.
@@ -80,6 +83,10 @@ Tahap sekarang: prototipe → cek kualitas → uji oleh operator. Status "produc
   - Garis potong ditulis DeviceCMYK murni lewat operator `K`: kiss `0 1 0 0`, die `1 0 0 0`. Tidak ada operator RGB, ruang warna ICC, atau OutputIntent, jadi tidak ada konversi ke sRGB. Operator lain yang ada hanya `0 g`/`0 G` (DeviceGray), yang ditulis PDFsharp sebelum artwork vektor ditempel; itu bukan warna garis potong.
   - Bleed: gambar bleed dibuat saat desain dimuat (maksimal 300 dpi), lalu dipakai untuk layar, preview JPG, dan PDF. Area yang dicetak = garis kiss (tanpa kiss: garis die) diperlebar sebesar bleed. Pada JPG berlatar putih, tepi luar 2 px diganti warna dari dalam supaya bleed tidak pucat. File vektor tidak diberi bleed.
   - Bleed ikut mengisi border putih antara artwork dan garis kiss. Pakai bersama offset kecil (0–0,5 mm) untuk stiker tanpa border.
+- **Indikator dan UX operator** (2026-10-17, spesifikasi leader bagian 4):
+  - Bentuk reguler atau irregular ditentukan otomatis: bila rata-rata isi bentuk terhadap kotaknya (ditimbang luas) ≥ 75%, dihitung reguler (persegi ±1, lingkaran ±0,79, bintang ±0,57). Batas hijau irregular (60%) tidak disebut di spesifikasi; dipakai aturan yang sama dengan reguler, yaitu batas bawah + 5 poin.
+  - Snap memakai grid nesting 2 mm (posisi kosong terdekat), bukan NFP poligon. Geser dengan panah keyboard tetap bebas. Bila tidak ada tempat kosong, stiker tetap di posisinya dan ditandai merah.
+  - Preset bahan memakai nilai awal dari panduan cetak stiker publik ([RESEARCH.md](RESEARCH.md) bagian 13), belum dikonfirmasi operator. Memilih preset langsung menyusun ulang.
 - **Ditunda sampai ada kebutuhan nyata:** hapus latar foto dengan AI dan memperbesar gambar pecah. Untuk gambar pecah, cara tercepat tetap meminta file asli ke customer; angka dpi merah memberi tahu kapan perlu.
 - **Tidak dibangun:** hide copy, simpan proyek, reg mark buatan aplikasi, dan mode nametag/kartu.
 
@@ -114,6 +121,7 @@ Tahap sekarang: prototipe → cek kualitas → uji oleh operator. Status "produc
 | Ambang dpi yang masih bisa diterima | operator, dari hasil cetak | 150 dpi |
 | Seberapa sering latar foto atau gambar pecah muncul | operator, setelah uji | hapus latar dengan AI ditunda |
 | Garis potong di Cutting Master 5 dikenali lewat warna atau layer | operator | warna (magenta/cyan) |
+| Nilai preset per bahan (offset, halus, jarak, margin) | operator | nilai awal dari panduan publik (RESEARCH §13) |
 
 ## 10. Checklist uji operator
 1. Tambahkan file CDR. Apakah CorelDRAW terbuka dan desainnya ikut masuk? Berapa detik prosesnya, dan apakah Printech tetap bisa dipakai selama menunggu?
@@ -126,7 +134,8 @@ Tahap sekarang: prototipe → cek kualitas → uji oleh operator. Status "produc
 8. Cetak di Develop (A3+) dan potong fisik di Graphtec. Berapa mm selisih potongannya? Apakah gerakan pisau mulus pada teks dan logo bertepi kasar? Langkah lengkap: [UJI-GARIS-POTONG.md](UJI-GARIS-POTONG.md) S10.
 9. PDF dari customer yang punya latar putih penuh: apakah garis potongnya ikut menjadi kotak?
 10. Buka PDF di CorelDRAW lalu klik garis kiss dan die: warnanya harus C0 M100 Y0 K0 dan C100 M0 Y0 K0 (CMYK, bukan RGB). Cetak satu desain PNG dengan bleed 2 mm dan offset kiss 0,5 mm, lalu potong: apakah tepi stiker tetap berwarna tanpa garis putih?
-11. Catat setiap error atau kejanggalan, lalu kirim ke pengembang.
+11. Pilih preset sesuai bahan yang dicetak. Apakah offset, halus, dan jaraknya cocok? Export Print Ticket lalu lampirkan ke SPK: apakah isinya cukup untuk kasir?
+12. Catat setiap error atau kejanggalan, lalu kirim ke pengembang.
 
 ## 11. Menjalankan
 - **Untuk operator (tanpa memasang .NET):**

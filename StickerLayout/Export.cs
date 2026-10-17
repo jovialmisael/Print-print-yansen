@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using PdfSharp.Drawing;
+using PdfSharp.Fonts;
 using PdfSharp.Pdf;
 
 namespace StickerLayout;
@@ -13,6 +14,50 @@ public static class Export
 
     // Kiss-cut = 100% magenta, die-cut = 100% cyan (CMYK): Cutting Master 5 memilih garis potong "By Color".
     static readonly XColor KissColor = XColor.FromCmyk(0, 1, 0, 0), DieColor = XColor.FromCmyk(1, 0, 0, 0);
+
+    static Export() => GlobalFontSettings.UseWindowsFontsUnderWindows = true; // teks Print Ticket memakai font Windows
+
+    // Print Ticket: ringkasan 1 halaman A4 untuk lampiran nota kasir/SPK. Daftar lembar dan desain dipotong
+    // supaya tetap 1 halaman.
+    public static void Ticket(string path, string paper, IList<List<Placed>> sheets, double cw, IList<double> sheetH, double margin, IEnumerable<string> settings)
+    {
+        using var doc = new PdfDocument();
+        var page = doc.AddPage();
+        page.Width = XUnit.FromMillimeter(210);
+        page.Height = XUnit.FromMillimeter(297);
+        using var g = XGraphics.FromPdfPage(page);
+        var opt = new XPdfFontOptions(PdfFontEncoding.Unicode);
+        XFont title = new("Arial", 16, XFontStyleEx.Bold, opt), bold = new("Arial", 10, XFontStyleEx.Bold, opt), body = new("Arial", 10, XFontStyleEx.Regular, opt);
+        double y = 25; // mm, garis dasar baris berikutnya
+        void Line(string text, XFont f, double next = 6) { g.DrawString(text, f, XBrushes.Black, 20 * Pt, y * Pt); y += next; }
+
+        var all = sheets.SelectMany(x => x).ToList();
+        double fill = sheets.Select((_, i) => Yield.Fillable(cw, sheetH[i], margin)).Sum(), use = fill > 0 ? all.Sum(p => p.S.AreaMm2) / fill : 0;
+        bool regular = Yield.Regular(all);
+        var t = Yield.Target(regular);
+        Line(App.Brand + " — Print Ticket", title, 9);
+        Line(Lang.T("TicketDate", DateTime.Now), body, 9);
+        Line(Lang.T("TicketPaper", paper, cw, sheetH.Max(), margin), body, 9);
+        Line(Lang.T("TicketSheets", sheets.Count), bold);
+        Line(Lang.T("TicketPcs", all.Count), bold);
+        Line(Lang.T("TicketUse", use, 1 - use), bold);
+        Line(Lang.T(regular ? "TargetReg" : "TargetIrr", t.Low, t.High, t.Green), body, 11);
+
+        const int MaxSheets = 10, MaxDesigns = 20;
+        Line(Lang.T("TicketPerSheet"), bold);
+        for (int i = 0; i < Math.Min(sheets.Count, MaxSheets); i++)
+            Line(Lang.T("TicketSheetLine", i + 1, sheets[i].Count, Yield.Use(sheets[i], cw, sheetH[i], margin)), body, 5);
+        if (sheets.Count > MaxSheets) Line(Lang.T("TicketMore", sheets.Count - MaxSheets), body, 5);
+        y += 5;
+        var designs = all.GroupBy(p => p.S).ToList();
+        Line(Lang.T("TicketDesigns"), bold);
+        foreach (var d in designs.Take(MaxDesigns)) Line($"{d.Key.Name} — {d.Key.ArtW:0.#} × {d.Key.ArtH:0.#} mm — {d.Count()} pcs", body, 5);
+        if (designs.Count > MaxDesigns) Line(Lang.T("TicketMore", designs.Count - MaxDesigns), body, 5);
+        y += 5;
+        Line(Lang.T("TicketSettings"), bold);
+        foreach (var s in settings) Line(s, body, 5);
+        doc.Save(path);
+    }
 
     // Satu halaman per lembar. Artwork PDF/AI/CDR ditempel sebagai vektor (warna asli), PNG/JPG apa adanya,
     // di-clip ke garis potong terluar; garis potong digambar di atasnya. Mengembalikan peringatan per file.

@@ -53,6 +53,8 @@ public class Sticker
     public Geometry? KissGeo => Kiss == "" ? null : kg ??= Freeze(Geometry.Parse(Kiss));
     public Geometry? DieGeo => Die == "" ? null : dg ??= Freeze(Geometry.Parse(Die));
     public Geometry Outer => DieGeo ?? KissGeo!;
+    // Seberapa penuh bentuk mengisi kotaknya: persegi ±1, lingkaran ±0,79, bintang/logo bebas lebih kecil.
+    public double Fill => AreaMm2 / Math.Max(1e-9, Outer.Bounds.Width * Outer.Bounds.Height);
     // Batas artwork saat digambar: garis terluar, atau dengan bleed: garis kiss (tanpa kiss: die) diperlebar bleed mm.
     public Geometry ArtClip => clip ??= BleedPng == null ? Outer : Freeze(Geometry.Combine(KissGeo ?? DieGeo!,
         (KissGeo ?? DieGeo!).GetWidenedPathGeometry(new Pen(null, 2 * LoadedBleed), 0.01, ToleranceType.Absolute),
@@ -527,6 +529,49 @@ public static class Corel
     }
 }
 
+// Pemakaian bahan dihitung terhadap area yang bisa diisi: kertas dikurangi margin tepi.
+public static class Yield
+{
+    public static double Fillable(double w, double h, double margin) => Math.Max(0, w - 2 * margin) * Math.Max(0, h - 2 * margin);
+
+    public static double Use(IEnumerable<Placed> ps, double w, double h, double margin)
+    {
+        double f = Fillable(w, h, margin);
+        return f > 0 ? ps.Sum(p => p.S.AreaMm2) / f : 0;
+    }
+
+    // Reguler = bentuk rata-rata (ditimbang luas) mengisi >= 75% kotaknya (persegi, lingkaran); selain itu irregular.
+    public static bool Regular(IEnumerable<Placed> ps)
+    {
+        double a = 0, f = 0;
+        foreach (var p in ps) { a += p.S.AreaMm2; f += p.S.AreaMm2 * p.S.Fill; }
+        return a == 0 || f / a >= 0.75;
+    }
+
+    // Target spesifikasi: reguler 70-85% (hijau >= 75%), irregular 55-70%. Batas hijau irregular tidak disebut di
+    // spesifikasi; dipakai aturan yang sama dengan reguler: batas bawah + 5 poin (60%).
+    public static (double Low, double Green, double High) Target(bool regular) => regular ? (0.70, 0.75, 0.85) : (0.55, 0.60, 0.70);
+
+    // 2 = hijau (mencapai target), 1 = kuning (dalam rentang target), 0 = merah (di bawah target).
+    public static int Level(double use, bool regular)
+    {
+        var t = Target(regular);
+        return use >= t.Green ? 2 : use >= t.Low ? 1 : 0;
+    }
+}
+
+// Preset per jenis bahan. Nilai awal dari panduan cetak stiker publik (lihat RESEARCH.md bagian 13);
+// belum dikonfirmasi operator AP 55. Margin 10 mm = ruang reg mark Cutting Master 5.
+public static class Presets
+{
+    public static readonly Dictionary<string, (Cut Kiss, Cut Die, double Margin, double Gap)> Material = new()
+    {
+        ["Vinyl kiss-cut"] = (new(true, 2, 1), new(false, 4, 2), 10, 2),
+        ["Chromo die-cut"] = (new(false, 2, 1), new(true, 3, 1), 10, 3),
+        ["Akrilik/tebal"] = (new(false, 2, 1), new(true, 3, 3), 10, 4),
+    };
+}
+
 public static class Paper
 {
     public static readonly Dictionary<string, (double W, double H)> Sizes = new()
@@ -636,6 +681,46 @@ public static class Nest
                     if (x >= 0 && y >= 0 && x < cols && y < rows) occ[x, y] = true;
                 }
         ps.Add(new Placed { S = s, Rot = p.rot, X = margin + p.x * Cell, Y = margin + p.y * Cell });
+        return true;
+    }
+
+    // Snap magnet: pindahkan p ke posisi grid terdekat yang tidak menabrak stiker lain (jarak antar stiker tetap
+    // dijaga) dan tetap di dalam margin. Memakai grid hunian yang sama dengan susun otomatis. false = tidak ada tempat.
+    public static bool Snap(List<Placed> ps, Placed p, double cw, double ch, double margin, double gap)
+    {
+        int cols = Math.Max(0, (int)((cw - 2 * margin) / Cell)), rows = Math.Max(0, (int)((ch - 2 * margin) / Cell));
+        int gc = (int)Math.Ceiling(gap / Cell - 1e-9);
+        var occ = new bool[cols, rows];
+        foreach (var q in ps)
+        {
+            if (q == p) continue;
+            var g = Rotate(q.S.Grid, q.Rot);
+            int ox = (int)Math.Round((q.X - margin) / Cell), oy = (int)Math.Round((q.Y - margin) / Cell);
+            for (int x = 0; x < g.GetLength(0); x++)
+                for (int y = 0; y < g.GetLength(1); y++)
+                    if (g[x, y])
+                        for (int dy = -gc; dy <= gc; dy++)
+                            for (int dx = -gc; dx <= gc; dx++)
+                            {
+                                int u = ox + x + dx, v = oy + y + dy;
+                                if (u >= 0 && v >= 0 && u < cols && v < rows) occ[u, v] = true;
+                            }
+        }
+        var mine = Rotate(p.S.Grid, p.Rot);
+        int gw = mine.GetLength(0), gh = mine.GetLength(1);
+        var cells = new List<(int, int)>();
+        for (int y = 0; y < gh; y++) for (int x = 0; x < gw; x++) if (mine[x, y]) cells.Add((x, y));
+        double px = (p.X - margin) / Cell, py = (p.Y - margin) / Cell, best = double.MaxValue;
+        (int x, int y)? at = null;
+        for (int y = 0; y + gh <= rows; y++)
+            for (int x = 0; x + gw <= cols; x++)
+            {
+                double d = (x - px) * (x - px) + (y - py) * (y - py);
+                if (d < best && Fits(occ, cells, x, y)) { best = d; at = (x, y); }
+            }
+        if (at is not { } a) return false;
+        p.X = margin + a.x * Cell;
+        p.Y = margin + a.y * Cell;
         return true;
     }
 

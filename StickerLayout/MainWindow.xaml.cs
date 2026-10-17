@@ -25,7 +25,7 @@ public partial class MainWindow : Window
     Placed? sel, drag;
     int selSheet, tooBig;
     Point last, panFrom;
-    bool panning, space;
+    bool panning, space, moved;
     Tool tool = Tool.Move;
     string status = "";
 
@@ -36,6 +36,8 @@ public partial class MainWindow : Window
         List.ItemsSource = items;
         PaperBox.ItemsSource = Paper.Sizes.Keys.Append("Custom").ToList();
         PaperBox.SelectedItem = "A3+"; // kertas stiker Develop (AP 55)
+        PresetBox.ItemsSource = Presets.Material.Keys.Prepend("Manual").ToList();
+        PresetBox.SelectedIndex = 0;
     }
 
     static double D(TextBox t, double def, double min = 0.01) =>
@@ -49,6 +51,10 @@ public partial class MainWindow : Window
     Cut Kiss => new(KissOn.IsChecked == true, D(KissOff, 2, 0), D(KissSm, 0, 0));
     Cut Die => new(DieOn.IsChecked == true, D(DieOff, 4, 0), D(DieSm, 0, 0));
     double BleedMm => D(BleedBox, 0, 0);
+    double GapMm => D(GapBox, 2, 0);
+
+    // Hijau = target bahan tercapai, kuning = dalam rentang target, merah = di bawah target.
+    Brush UseBrush(double use, bool regular) => (Brush)FindResource(Yield.Level(use, regular) switch { 2 => "Good", 1 => "Mid", _ => "Warn" });
     Brush Dim => (Brush)FindResource("Dim");
 
     void Window_SourceInitialized(object s, EventArgs e) => App.DarkTitle(this);
@@ -61,6 +67,7 @@ public partial class MainWindow : Window
         canvases = [];
         var views = new List<UIElement>();
         double w = sheets.Count > 0 ? sheetW : CW;
+        var paper = PaperBox.SelectedItem as string ?? "Custom";
         for (int i = 0; i < (items.Count == 0 ? 0 : Math.Max(1, sheets.Count)); i++)
         {
             double h = i < sheetH.Count ? sheetH[i] : CH;
@@ -69,7 +76,8 @@ public partial class MainWindow : Window
             c.LayoutTransform = zoom;
             canvases.Add(c);
             var head = new DockPanel { Margin = new Thickness(1, 0, 1, 7) };
-            var pct = new TextBlock { Text = (ps.Sum(p => p.S.AreaMm2) / (w * h)).ToString("P0"), Foreground = Dim };
+            double su = Yield.Use(ps, w, h, MarginMm);
+            var pct = new TextBlock { Text = ps.Count == 0 ? "" : $"{Lang.T("SheetYield", ps.Count, paper)} · {su:P0}", Foreground = UseBrush(su, Yield.Regular(ps)) };
             DockPanel.SetDock(pct, Dock.Right);
             head.Children.Add(pct);
             head.Children.Add(new TextBlock { Text = Lang.T("SheetN", i + 1), Foreground = Dim });
@@ -81,12 +89,17 @@ public partial class MainWindow : Window
         Sheets.ItemsSource = views;
         Empty.Visibility = items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         FileCount.Text = items.Count > 0 ? items.Count.ToString(CultureInfo.InvariantCulture) : "";
-        var paper = PaperBox.SelectedItem as string ?? "Custom";
         TabText.Text = $"{paper}   {F(w)} × {F(CH)} mm";
 
-        double area = sheetW * sheetH.Sum(), use = area > 0 ? sheets.Sum(x => x.Sum(p => p.S.AreaMm2)) / area : 0;
+        // Bahan terpakai terhadap area yang bisa diisi (kertas dikurangi margin), target reguler/irregular dari bentuk.
+        var all = sheets.SelectMany(x => x).ToList();
+        double fill = sheets.Select((_, i) => Yield.Fillable(sheetW, sheetH[i], MarginMm)).Sum(), use = fill > 0 ? all.Sum(p => p.S.AreaMm2) / fill : 0;
+        bool regular = Yield.Regular(all);
+        var target = Yield.Target(regular);
         UseBar.Width = 84 * Math.Clamp(use, 0, 1);
-        UseText.Text = sheets.Count > 0 ? use.ToString("P0") : "–";
+        UseBar.Background = UseBrush(use, regular);
+        UseText.Text = sheets.Count > 0 ? Lang.T("UseWaste", use, 1 - use) : "–";
+        UseGroup.ToolTip = Lang.T(regular ? "TargetReg" : "TargetIrr", target.Low, target.High, target.Green);
         var warn = new List<string>();
         int bad = sheets.Sum(x => x.Count(p => p.Bad));
         if (bad > 0) warn.Add(Lang.T("Overlap", bad));
@@ -116,7 +129,7 @@ public partial class MainWindow : Window
         if (!Kiss.On && !Die.On) { MessageBox.Show(Lang.T("NeedCut"), App.Brand); return false; }
         if (Kiss.On && Die.On && Die.Off <= Kiss.Off) { MessageBox.Show(Lang.T("DieInside"), App.Brand); return false; }
         // Bleed tidak boleh melewati jarak antar stiker: warna tidak pernah masuk garis potong tetangga.
-        if (BleedMm > D(GapBox, 2, 0)) { MessageBox.Show(Lang.T("BleedGap"), App.Brand); return false; }
+        if (BleedMm > GapMm) { MessageBox.Show(Lang.T("BleedGap"), App.Brand); return false; }
         return true;
     }
 
@@ -236,7 +249,7 @@ public partial class MainWindow : Window
                 }
             }
             sheetW = CW;
-            sheets = Nest.Run(items, sheetW, CH, MarginMm, D(GapBox, 2, 0), out tooBig);
+            sheets = Nest.Run(items, sheetW, CH, MarginMm, GapMm, out tooBig);
             sheetH = sheets.Select(_ => CH).ToList();
             for (int i = 0; i < sheets.Count; i++) Nest.Check(sheets[i], sheetW, sheetH[i], MarginMm);
             sel = null;
@@ -273,7 +286,38 @@ public partial class MainWindow : Window
         Redraw(sheets.Count > 0 ? Summary() : "");
     }
 
-    void Rotate_Click(object s, RoutedEventArgs e) => EditSel(p => p.Rot = (p.Rot + 90) % 360);
+    // Putar 90°, lalu snap ke posisi kosong terdekat (tidak menabrak, jarak antar stiker tetap).
+    void RotateSel() => EditSel(p => { p.Rot = (p.Rot + 90) % 360; Nest.Snap(sheets[selSheet], p, sheetW, sheetH[selSheet], MarginMm, GapMm); });
+    void Rotate_Click(object s, RoutedEventArgs e) => RotateSel();
+
+    // Preset bahan mengisi garis potong, margin, dan jarak, lalu langsung menyusun ulang.
+    void Preset_Changed(object s, SelectionChangedEventArgs e)
+    {
+        if (PresetBox.SelectedItem is not string k || !Presets.Material.TryGetValue(k, out var m)) return;
+        KissOn.IsChecked = m.Kiss.On; KissOff.Text = F(m.Kiss.Off); KissSm.Text = F(m.Kiss.Smooth);
+        DieOn.IsChecked = m.Die.On; DieOff.Text = F(m.Die.Off); DieSm.Text = F(m.Die.Smooth);
+        MarginBox.Text = F(m.Margin); GapBox.Text = F(m.Gap);
+        if (items.Count > 0) Arrange();
+    }
+
+    // Print Ticket: ringkasan 1 halaman A4 (lembar, pcs, efisiensi bahan) untuk lampiran nota kasir/SPK.
+    void Ticket_Click(object s, RoutedEventArgs e)
+    {
+        if (sheets.Count == 0) { MessageBox.Show(Lang.T("NestFirst"), App.Brand); return; }
+        var dlg = new SaveFileDialog { Filter = "PDF|*.pdf", FileName = "print-ticket.pdf" };
+        if (dlg.ShowDialog() != true) return;
+        try
+        {
+            var st = sheets[0][0].S; // pengaturan yang dipakai untuk layout ini
+            var lines = new List<string>();
+            if (st.LoadedKiss.On) lines.Add(Lang.T("TicketCut", Lang.T("Kiss"), st.LoadedKiss.Off, st.LoadedKiss.Smooth));
+            if (st.LoadedDie.On) lines.Add(Lang.T("TicketCut", Lang.T("Die"), st.LoadedDie.Off, st.LoadedDie.Smooth));
+            lines.Add(Lang.T("TicketGap", GapMm, st.LoadedBleed));
+            Export.Ticket(dlg.FileName, PaperBox.SelectedItem as string ?? "Custom", sheets, sheetW, sheetH, MarginMm, lines);
+            Redraw(Lang.T("Saved", dlg.FileName));
+        }
+        catch (Exception ex) { MessageBox.Show(ex.Message, App.Brand); }
+    }
     void DeletePlaced_Click(object s, RoutedEventArgs e) => DeleteSel();
     void Exit_Click(object s, RoutedEventArgs e) => Close();
 
@@ -486,7 +530,7 @@ public partial class MainWindow : Window
             case Key.Z: ToolZoom.IsChecked = true; break;
             case Key.F4 when Keyboard.FocusedElement is not ComboBox: Fit(); break; // F4 / Shift+F4 seperti CorelDRAW
             case Key.Delete when sel != null: DeleteSel(); break;
-            case Key.R when sel != null: EditSel(p => p.Rot = (p.Rot + 90) % 360); break;
+            case Key.R when sel != null: RotateSel(); break;
             case Key.Left when sel != null: EditSel(p => p.X -= step); break;
             case Key.Right when sel != null: EditSel(p => p.X += step); break;
             case Key.Up when sel != null: EditSel(p => p.Y -= step); break;
@@ -533,6 +577,7 @@ public partial class MainWindow : Window
         var pt = e.GetPosition(c);
         drag.X += pt.X - last.X;
         drag.Y += pt.Y - last.Y;
+        moved |= pt != last;
         last = pt;
         foreach (var el in c.Children.OfType<FrameworkElement>()) if (el.Tag == drag) el.RenderTransform = Nest.Xf(drag);
     }
@@ -540,7 +585,10 @@ public partial class MainWindow : Window
     void Sheets_Up(object s, MouseButtonEventArgs e)
     {
         if (drag == null) return;
+        // Snap magnet: stiker yang digeser pindah ke posisi kosong terdekat (tidak menabrak, jarak tetap).
+        if (moved) Nest.Snap(sheets[selSheet], drag, sheetW, sheetH[selSheet], MarginMm, GapMm);
         drag = null;
+        moved = false;
         Sheets.ReleaseMouseCapture();
         Nest.Check(sheets[selSheet], sheetW, sheetH[selSheet], MarginMm);
         Redraw(Summary());

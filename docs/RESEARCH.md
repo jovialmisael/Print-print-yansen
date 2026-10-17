@@ -176,7 +176,34 @@ Pemetaan ke Printech: langkah 5 (trim, offset/border, ukuran mm) sudah otomatis.
   - Jarak minimum ke artwork tetap di atas offset - 0,43 mm.
 - Angka akhir di app (blur kemudian diganti 3 lintasan box blur supaya stiker besar tetap cepat): lihat [UJI-GARIS-POTONG.md](UJI-GARIS-POTONG.md).
 
+## 13. Nilai awal preset bahan (2026-10-17)
+Prototipe belum butuh angka dari operator, jadi preset memakai panduan cetak stiker yang terbuka untuk umum. Angka di bawah diambil dari ringkasan hasil pencarian web; halaman sumbernya belum dibuka satu per satu.
+
+- **Jarak antar stiker:**
+  - StickerApp: 2 mm antar stiker dan 2 mm dari tepi lembar.
+  - Jukebox Print: minimal 1,5 mm; stiker bening minimal 2 mm.
+  - Discount Labels: 3/16" (±4,8 mm) antar bentuk kiss-cut.
+  - Printful: ±0,25" (±6,4 mm).
+- **Offset dan border:**
+  - Printed Mint menambahkan border putih ±1/8" (±3,2 mm).
+  - Panduan lain: offset garis kiss minimal 0,1" (±2,5 mm).
+  - StickerApp memotong dengan bleed 2 mm.
+- **Bleed die-cut:** umumnya 1/8" (±3 mm) di luar garis potong. Ada yang memakai 1/16" (±1,6 mm) atau 3 mm.
+- **Bahan tebal atau magnet:**
+  - Tidak ditemukan angka radius lengkung minimum dari pabrik.
+  - Forum menyarankan pisau 60° dan uji potong dulu.
+- **Belum diverifikasi:** apakah Graphtec di AP 55 dipakai untuk akrilik kaku. Preset "Akrilik/tebal" ditujukan untuk bahan tebal yang masih bisa dipotong pisau plotter.
+
+| Preset | Kiss (offset/halus) | Die (offset/halus) | Margin | Jarak | Dasar |
+|---|---|---|---|---|---|
+| Vinyl kiss-cut | 2 / 1 mm | mati | 10 mm | 2 mm | StickerApp: jarak 2 mm; offset 2 mm (dalam rentang 2–3,2 mm) |
+| Chromo die-cut | mati | 3 / 1 mm | 10 mm | 3 mm | Border ±1/8" (Printed Mint); jarak di antara 2 mm (StickerApp) dan 3/16" (Discount Labels) |
+| Akrilik/tebal | mati | 3 / 3 mm | 10 mm | 4 mm | Asumsi: bahan tebal butuh lengkung lebih landai (halus 3) dan jarak lebih lebar. Perlu uji potong |
+
+Margin 10 mm untuk semua preset adalah ruang reg mark Cutting Master 5, sama dengan default aplikasi.
+
 ## Sumber
+- **Preset bahan (bagian 13):** [StickerApp](https://stickerapp.com/support/stickers/products/sticker-sheet/multiple-kiss-cuts-on-one-sheet), [Jukebox Print](https://support.jukeboxprint.com/en/articles/9770664-advanced-guide-setting-up-sticker-sheets-in-adobe-illustrator), [Discount Labels](https://www.discountlabels.com/wp-content/uploads/2023/09/StickerSheet-SalesSheet-web.pdf), [Printful](https://support.printful.com/hc/en-us/articles/41396541153553), [Printed Mint](https://www.printedmint.com/kiss-cut-sticker-guide), [StickerYou](https://www.stickeryou.com/support/post/bleed-safe-zone-sticker-maker), [4over4](https://mapp.4over4.com/guide/bleeds-cut-line-and-safety-the-print-ready-checklist), [StickerGiant](https://support.stickergiant.com/hc/en-us/articles/37960221648532), [Signs101 (magnet)](https://www.signs101.com/threads/print-cut-magnets.82456)
 - **Reg mark:**
   - Graphtec: [ARMS](https://www.graphteccorp.com/cutting/arms/), [Cutting Master 5](https://www.graphteccorp.com/cutting/cm5/), [manual CM5](https://mygraphtec.jp/site_download/cm5/data/CM5_Manual_ENG.pdf), [manual FC8000](https://www.manualslib.com/manual/950580/Graphtec-Fc8000-Series.html?page=103)
   - Summa: [Fiery – Summa OPOS](https://communities.efi.com/s/article/Setting-up-Summa-OPOS-marks-in-Digital-Factory?language=en_US), [manual Summa DC5](https://www.manualslib.com/manual/1410878/Summa-Dc5.html?page=52), [panduan OPOS](https://www.summa.com/media/lccbhxat/opos20_en.pdf)

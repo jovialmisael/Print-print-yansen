@@ -17,6 +17,8 @@
     <SolidColorBrush x:Key="KissBrush" Color="#EC008C"/>
     <SolidColorBrush x:Key="DieBrush" Color="#00AEEF"/>
     <SolidColorBrush x:Key="Warn" Color="#FF6B5A"/>
+    <SolidColorBrush x:Key="Good" Color="#3FB950"/>
+    <SolidColorBrush x:Key="Mid" Color="#E3B341"/>
     <SolidColorBrush x:Key="WarnBg" Color="#33FF6B5A"/>
     <!-- sudut pertemuan dua scrollbar -->
     <SolidColorBrush x:Key="{x:Static SystemColors.ControlBrushKey}" Color="#1C1D20"/>
