@@ -32,6 +32,7 @@ public static class SelfCheck
 
             // Ukur sel grid 2 mm vs 1 mm pada job ±130 stiker (waktu vs pemakaian bahan).
             double cell0 = Nest.Cell;
+            long nestMs = 0; // dipakai P5
             foreach (double cell in new[] { 2.0, 1.0 })
             {
                 Nest.Cell = cell;
@@ -39,6 +40,7 @@ public static class SelfCheck
                 foreach (var s in big) s.Copies *= 5;
                 var sw = Stopwatch.StartNew();
                 var r = Nest.Run(big, A4W, A4H, Margin, Gap, out _);
+                if (cell == cell0) nestMs = sw.ElapsedMilliseconds;
                 log.Add($"cell {cell} mm: {big.Sum(s => s.Copies)} stiker -> {r.Count} lembar A4, pemakaian {Use(r):P1}, {sw.ElapsedMilliseconds} ms");
             }
             Nest.Cell = cell0;
@@ -87,23 +89,6 @@ public static class SelfCheck
             cs.EraseFromBorder(32);
             Check(cs.Alpha(0)[155 * cs.W + 150] > 16, "hapus latar ikut menghapus lubang di tengah bintang");
 
-            // CDR lewat proses worker: tanpa CorelDRAW muncul pesan NoCorel dan aplikasi tidak crash;
-            // worker yang melewati batas waktu dihentikan paksa.
-            var fakeCdr = Path.Combine(dir, "tidak-ada.cdr");
-            var cdrSw = Stopwatch.StartNew();
-            string cdrMsg = "dilewati (CorelDRAW terpasang)";
-            if (Type.GetTypeFromProgID("CorelDRAW.Application") == null)
-            {
-                try { Corel.ToPdf(fakeCdr); cdrMsg = "tanpa error"; } catch (InvalidOperationException ex) { cdrMsg = ex.Message; }
-                Check(cdrMsg == Lang.T("NoCorel"), "worker CDR tanpa CorelDRAW: " + cdrMsg);
-            }
-            long noCorelMs = cdrSw.ElapsedMilliseconds;
-            bool killed = false;
-            cdrSw.Restart();
-            try { Corel.ToPdf(fakeCdr, timeoutMs: 1); } catch (TimeoutException) { killed = true; }
-            Check(killed, "worker CDR tidak dihentikan setelah batas waktu");
-            log.Add($"cdr worker: {cdrMsg} ({noCorelMs} ms); batas 1 ms -> dihentikan ({cdrSw.ElapsedMilliseconds} ms)");
-
             // A3+ = kertas stiker Develop (AP 55).
             Check(Paper.Sizes.TryGetValue("A3+", out var a3p) && a3p == (320, 480), "preset A3+ 320x480 tidak ada");
             // DPI hanya untuk desain yang ditempel sebagai gambar; vektor tidak punya DPI.
@@ -115,12 +100,15 @@ public static class SelfCheck
             log.Add($"dpi: circle 40 mm = {circle.Dpi:0} dpi, 80 mm = {wide.Dpi:0} dpi (rendah)");
 
             // Skenario uji garis potong S1-S9 dan S11 (docs/UJI-GARIS-POTONG.md). S10 dan bagian CorelDRAW di S8 diuji operator.
+            // Skenario stabilitas dan performa P1-P5 (docs/UJI-STABILITAS.md). P6-P10 diuji pengembang/operator.
             var fails = new List<string>();
-            void S(int n, string title, bool ok, string detail)
+            void Report(string id, string title, bool ok, string detail)
             {
-                log.Add($"S{n} {(ok ? "LULUS" : "GAGAL")}: {title} | {detail}");
-                if (!ok) fails.Add($"S{n}");
+                log.Add($"{id} {(ok ? "LULUS" : "GAGAL")}: {title} | {detail}");
+                if (!ok) fails.Add(id);
             }
+            void S(int n, string title, bool ok, string detail) => Report($"S{n}", title, ok, detail);
+            void P(int n, string title, bool ok, string detail) => Report($"P{n}", title, ok, detail);
             var none = new Cut(false, 0, 0);
             Sticker FromFile(string f, double w, Cut k, Cut d) => Loader.Load(Path.Combine(dir, f), 0, w, k, d);
             Sticker Png(BitmapSource b, double w, Cut k, Cut d) => Loader.Load("uji.png", 0, w, k, d, edited: Loader.Png(b));
@@ -209,6 +197,55 @@ public static class SelfCheck
             var big300 = Png(bigImg, 300, kiss, die);
             S(9, "stiker besar 300 mm dimuat < 5 detik", bsw.ElapsedMilliseconds < 5000, $"{bsw.ElapsedMilliseconds} ms, kiss {Nodes(big300.Kiss)} node, die {Nodes(big300.Die)} node");
 
+            // P1: CDR tanpa CorelDRAW (lewat proses worker): pesan jelas, aplikasi tidak crash.
+            var fakeCdr = Path.Combine(dir, "tidak-ada.cdr");
+            var cdrStart = DateTime.Now;
+            var cdrSw = Stopwatch.StartNew();
+            if (Type.GetTypeFromProgID("CorelDRAW.Application") == null)
+            {
+                string msg = "tanpa error";
+                try { Corel.ToPdf(fakeCdr); } catch (InvalidOperationException ex) { msg = ex.Message; }
+                P(1, "CDR tanpa CorelDRAW: pesan jelas, aplikasi tidak crash", msg == Lang.T("NoCorel"), $"{cdrSw.ElapsedMilliseconds} ms: {msg}");
+            }
+            else P(1, "CDR tanpa CorelDRAW", true, "dilewati: CorelDRAW terpasang, uji manual P7");
+
+            // P2: worker yang melewati batas waktu dihentikan paksa dan tidak ada yang tersisa.
+            bool killed = false;
+            cdrSw.Restart();
+            try { Corel.ToPdf(fakeCdr, timeoutMs: 1); } catch (TimeoutException) { killed = true; }
+            long killMs = cdrSw.ElapsedMilliseconds;
+            int left = Process.GetProcessesByName(Path.GetFileNameWithoutExtension(Environment.ProcessPath!))
+                .Count(p => p.Id != Environment.ProcessId && Started(p) >= cdrStart);
+            P(2, "worker yang melewati batas waktu dihentikan", killed && left == 0 && killMs < 2000, $"dihentikan dalam {killMs} ms, worker tersisa {left}");
+
+            // P3: nesting paralel deterministik: hasil sama setiap kali.
+            static string Sig(List<List<Placed>> r) => string.Join(";", r.SelectMany((sh, i) => sh.Select(p => $"{i}:{p.S.Name}:{p.X}:{p.Y}:{p.Rot}")));
+            int variants = Enumerable.Range(0, 5).Select(_ => Sig(Nest.Run(items, A4W, A4H, Margin, Gap, out _))).Distinct().Count();
+            P(3, "nesting paralel deterministik", variants == 1, $"5 kali susun, {variants} hasil berbeda");
+
+            // P4: kikis tepi paralel identik dengan algoritma berurutan; tampilan 1:1 identik dengan hasil penuh.
+            var alpha0 = (byte[])ci.Alpha(0).Clone();
+            bool erodeSame = Enumerable.Range(1, 3).All(c => ci.Alpha(c).AsSpan().SequenceEqual(ErodeRef(alpha0, ci.W, ci.H, c)));
+            var full = (byte[])ci.Compose(1).Clone();
+            var one = new byte[full.Length];
+            ci.ComposeView(1, one, ci.W, ci.H);
+            bool viewSame = one.AsSpan().SequenceEqual(full);
+            P(4, "hapus latar paralel identik dengan versi berurutan", erodeSame && viewSame, $"kikis 1-3 px: {(erodeSame ? "sama" : "BEDA")}, tampilan 1:1: {(viewSame ? "sama" : "BEDA")}");
+
+            // P5: kerja di UI thread tetap singkat: susun 130 stiker, satu langkah Rapikan pada gambar 4000x3000.
+            var bigClean = new CleanImage(Loader.Png(Draw(dc =>
+            {
+                dc.DrawRectangle(new SolidColorBrush(Color.FromRgb(30, 90, 168)), null, new Rect(0, 0, 4000, 3000));
+                dc.DrawEllipse(Brushes.DarkOrange, null, new Point(2000, 1500), 1300, 1300);
+            }, 4000, 3000)));
+            var view = new byte[1600 * 1200 * 4];
+            var rsw = Stopwatch.StartNew();
+            bigClean.EraseFromBorder(32);
+            bigClean.ComposeView(1, view, 1600, 1200);
+            long cleanMs = rsw.ElapsedMilliseconds;
+            P(5, "UI thread: susun 130 stiker < 500 ms, satu langkah Rapikan 4000x3000 < 1000 ms", nestMs < 500 && cleanMs < 1000,
+                $"susun {nestMs} ms, rapikan {cleanMs} ms ({bigClean.ErasedFraction:P0} dihapus)");
+
             var sheets = Nest.Run(items, A4W, A4H, Margin, Gap, out int tooBig);
             Check(tooBig == 0, $"{tooBig} stiker tidak muat");
             Check(sheets.Count >= 2, "tidak meluap ke lembar kedua");
@@ -276,6 +313,34 @@ public static class SelfCheck
     }
 
     // Node seperti di CorelDRAW: satu per segmen (C = kurva, L = garis lurus); sudut tajam Potrace = dua L.
+    static DateTime Started(Process p) { try { return p.StartTime; } catch (Exception) { return DateTime.MinValue; } }
+
+    // Referensi berurutan untuk kikis tepi (algoritma sebelum diparalelkan), dipakai P4.
+    static byte[] ErodeRef(byte[] src, int w, int h, int contract)
+    {
+        var a = (byte[])src.Clone();
+        for (int pass = 0; pass < contract; pass++)
+        {
+            var clear = new List<int>();
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++)
+                {
+                    int i = y * w + x;
+                    if (a[i] <= 16) continue;
+                    bool edge = false;
+                    for (int dy = -1; dy <= 1; dy++)
+                        for (int dx = -1; dx <= 1; dx++)
+                        {
+                            int u = x + dx, v = y + dy;
+                            if (u >= 0 && v >= 0 && u < w && v < h && a[v * w + u] <= 16) edge = true;
+                        }
+                    if (edge) clear.Add(i);
+                }
+            foreach (int i in clear) a[i] = 0;
+        }
+        return a;
+    }
+
     static int Nodes(string path) => path.Count(ch => ch is 'C' or 'L');
     static int Corners(string path) => path.Count(ch => ch == 'L') / 2;
 

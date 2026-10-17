@@ -73,7 +73,8 @@ Tahap sekarang: prototipe → cek kualitas → uji oleh operator. Status "produc
 - **Stabilitas dan performa** (2026-10-17, spesifikasi leader bagian 2):
   - CorelDRAW COM berjalan di proses worker (exe yang sama dengan argumen `--cdr2pdf`), bukan di proses utama. Selama menunggu, UI tetap jalan. Lewat 30 detik, worker dihentikan dan operator mendapat pesan; Printech tetap jalan. CorelDRAW sendiri tidak dimatikan supaya pekerjaan operator yang belum disimpan aman.
   - 3 percobaan nesting dan hapus latar dihitung paralel dengan `Parallel.For`. Spesifikasi menyebut `Parallel.ForEachAsync`, tetapi API itu untuk kerja async (I/O), sedangkan kerja ini murni CPU. Hasilnya identik bit per bit dengan versi berurutan.
-  - Hasil ukur (Release, CPU 12 thread): nesting 130 stiker 57 → 43 ms. Gambar 4000×3000: hapus latar 119 → 97 ms (flood fill tetap berurutan), kikis tepi 103 → 31 ms, tampilan 62 → 20 ms. RAM saat diam tetap 136 MB.
+  - Hasil ukur (Release, CPU 12 thread): nesting 130 stiker 57 → 43 ms. Gambar 4000×3000: hapus latar 119 → 97 ms (flood fill tetap berurutan), kikis tepi 103 → 31 ms, tampilan 62 → 20 ms. RAM saat diam tidak berubah (versi lama 148–152 MB, versi baru 148–153 MB, 4 kali ukur).
+  - Skenario uji P1–P10: [UJI-STABILITAS.md](UJI-STABILITAS.md).
 - **Ditunda sampai ada kebutuhan nyata:** hapus latar foto dengan AI dan memperbesar gambar pecah. Untuk gambar pecah, cara tercepat tetap meminta file asli ke customer; angka dpi merah memberi tahu kapan perlu.
 - **Tidak dibangun:** hide copy, simpan proyek, reg mark buatan aplikasi, dan mode nametag/kartu.
 
@@ -96,7 +97,7 @@ Tahap sekarang: prototipe → cek kualitas → uji oleh operator. Status "produc
 - Rapikan gambar: latar foto yang ramai (bukan warna polos) belum bisa dihapus otomatis; gambar di atas 4000 px diperkecil ke 4000 px saat dirapikan.
 - Reduksi node: target 60-80% tercapai pada logo kasar dan bentuk bulat. Teks dan bintang turun 33-59% karena sudutnya adalah detail asli. Di area cekung garis bisa bergeser keluar sampai ±0,5 mm (kiss) atau ±0,7 mm (die): border sedikit lebih lebar. Halus 0 mematikan penghalusan bentuk.
 - CDR: batas 30 detik belum dikalibrasi di PC operator. Bila CorelDRAW menggantung karena dialog yang tidak terlihat, tutup CorelDRAW lalu tambahkan file lagi.
-- Muat ulang desain dan nesting masih berjalan di UI thread (nesting 130 stiker ±43 ms; desain sangat besar bisa ±1 detik). RAM saat diam 136 MB, sedikit di atas target ±120 MB.
+- Muat ulang desain dan nesting masih berjalan di UI thread (nesting 130 stiker ±43 ms; desain sangat besar bisa ±1 detik). RAM saat diam 136–153 MB, di atas target ±120 MB.
 
 ## 9. Pertanyaan terbuka
 | Pertanyaan | Ditanyakan ke | Default sampai dijawab |
@@ -129,4 +130,4 @@ Tahap sekarang: prototipe → cek kualitas → uji oleh operator. Status "produc
 - **Membuat zip untuk operator:** `dotnet publish StickerLayout -c Release -r win-x64 --self-contained -o publish\Printech`, lalu zip folder `publish\Printech`. Folder `publish/` tidak masuk git.
 - **Menjalankan aplikasi:** `dotnet run --project StickerLayout` (perlu .NET 10). File juga bisa dibuka sebagai argumen, misalnya lewat "Open with" atau dengan menyeret file ke ikon aplikasi.
 - **File contoh:** folder `samples/` (circle.png, star.jpg, badge.svg, logo.pdf, logo.ai, logo-on-blue.jpg untuk mencoba Rapikan, dan lainnya).
-- **Cek otomatis:** `StickerLayout\bin\Debug\net10.0-windows\StickerLayout.exe --selfcheck samples`. Hasilnya ditulis ke `samples/selfcheck.txt`. Skenario garis potong S1–S9 dan S11 ikut dijalankan; satu saja gagal, exit code 1.
+- **Cek otomatis:** `StickerLayout\bin\Debug\net10.0-windows\StickerLayout.exe --selfcheck samples`. Hasilnya ditulis ke `samples/selfcheck.txt`. Skenario garis potong (S1–S9, S11) dan stabilitas (P1–P5) ikut dijalankan; satu saja gagal, exit code 1.
