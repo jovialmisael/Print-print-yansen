@@ -97,7 +97,7 @@ public static class SelfCheck
             Check(wide.LowDpi, $"circle 80 mm ({wide.Dpi:0} dpi) harus ditandai resolusi rendah");
             log.Add($"dpi: circle 40 mm = {circle.Dpi:0} dpi, 80 mm = {wide.Dpi:0} dpi (rendah)");
 
-            // Skenario uji garis potong S1-S9 (docs/UJI-GARIS-POTONG.md). S10 dan bagian CorelDRAW di S8 diuji operator.
+            // Skenario uji garis potong S1-S9 dan S11 (docs/UJI-GARIS-POTONG.md). S10 dan bagian CorelDRAW di S8 diuji operator.
             var fails = new List<string>();
             void S(int n, string title, bool ok, string detail)
             {
@@ -157,6 +157,34 @@ public static class SelfCheck
                 if (c1 > c0) split.Add($"celah {gap} mm: {c0} -> {c1} kontur");
             }
             S(7, "dua bagian berdekatan tidak pecah", split.Count == 0, split.Count == 0 ? "celah 3,0 / 3,3 / 3,6 / 3,9 mm: kontur tidak bertambah" : string.Join("; ", split));
+
+            // S11: hanya kontur luar. Offset menutup celah cincin "C" dan titik melingkar; lubang yang terbentuk tidak boleh ikut dipotong.
+            var cRing = Draw(dc =>
+            {
+                double a = 5.4 * Math.PI / 180;
+                var g = new StreamGeometry();
+                using (var ctx = g.Open())
+                {
+                    ctx.BeginFigure(new Point(150 + 120 * Math.Cos(a), 150 + 120 * Math.Sin(a)), false, false);
+                    ctx.ArcTo(new Point(150 + 120 * Math.Cos(a), 150 - 120 * Math.Sin(a)), new Size(120, 120), 0, true, SweepDirection.Clockwise, true, false);
+                }
+                dc.DrawGeometry(null, new Pen(Brushes.Black, 40), g);
+            });
+            var dots = Draw(dc =>
+            {
+                for (int i = 0; i < 12; i++) dc.DrawEllipse(Brushes.Black, null, new Point(150 + 110 * Math.Cos(i * Math.PI / 6), 150 + 110 * Math.Sin(i * Math.PI / 6)), 22, 22);
+                dc.DrawEllipse(Brushes.Black, null, new Point(150, 150), 40, 40);
+            });
+            var holes = new List<string>();
+            bool solid = true;
+            foreach (var (name, img) in new[] { ("cincin C", cRing), ("titik melingkar + tengah", dots) })
+            {
+                var hs = Png(img, 40, kiss, die);
+                int kissN = hs.Kiss.Count(ch => ch == 'M'), dieN = hs.Die.Count(ch => ch == 'M');
+                solid &= kissN == 1 && dieN == 1;
+                holes.Add($"{name}: kiss {kissN}, die {dieN} kontur");
+            }
+            S(11, "hanya kontur luar: lubang yang tertutup offset tidak dipotong", solid, string.Join("; ", holes));
 
             // S9: stiker besar 300 mm (gambar 3000 px), kiss + die.
             var bigImg = Draw(dc => dc.DrawEllipse(Brushes.Black, null, new Point(1500, 1500), 1400, 1400), 3000, 3000);

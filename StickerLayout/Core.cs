@@ -142,11 +142,12 @@ public static class Loader
         for (int y = 0; y < mh; y++) for (int x = 0; x < mw; x++) m[x + pad, y + pad] = mask[x, y];
 
         bool[,]? outer = null, kissMask = null;
-        if (kiss.On) { outer = kissMask = Smooth(Close(m, kiss), m, kiss); s.Kiss = Trace(outer); }
+        if (kiss.On) { outer = kissMask = Solid(Smooth(Close(m, kiss), m, kiss)); s.Kiss = Trace(outer); }
         if (die.On)
         {
             outer = Smooth(Close(m, die), m, die);
             if (kissMask != null) foreach (var (x, y) in Cells(outer)) outer[x, y] |= kissMask[x, y]; // die selalu membungkus kiss
+            outer = Solid(outer);
             s.Die = Trace(outer);
         }
         if (outer == null) throw new InvalidOperationException(Lang.T("NeedCut"));
@@ -252,27 +253,28 @@ public static class Loader
         return x1 < 0 ? null : new Int32Rect(x0, y0, x1 - x0 + 1, y1 - y0 + 1);
     }
 
-    // Lubang di dalam diisi: hanya kontur luar yang dipotong.
     static bool[,] Silhouette(BitmapSource b, bool alpha, out int w, out int h)
     {
         var (px, W, H) = Pixels(b);
-        var bg = new bool[W * H];
-        var st = new Stack<int>();
-        void Push(int x, int y) { int i = y * W + x; if (!bg[i] && !Fg(px, i, alpha)) { bg[i] = true; st.Push(i); } }
+        var m = new bool[W, H];
+        for (int y = 0; y < H; y++) for (int x = 0; x < W; x++) m[x, y] = Fg(px, y * W + x, alpha);
+        w = W; h = H;
+        return Solid(m);
+    }
+
+    // Lubang (latar yang tidak terhubung ke tepi) diisi: hanya kontur luar yang dipotong.
+    // Berlaku juga untuk lubang baru yang terbentuk saat offset menutup celah artwork (huruf C besar, teks melingkar).
+    static bool[,] Solid(bool[,] m)
+    {
+        int W = m.GetLength(0), H = m.GetLength(1);
+        var bg = new bool[W, H];
+        var st = new Stack<(int, int)>();
+        void Push(int x, int y) { if (x >= 0 && y >= 0 && x < W && y < H && !bg[x, y] && !m[x, y]) { bg[x, y] = true; st.Push((x, y)); } }
         for (int x = 0; x < W; x++) { Push(x, 0); Push(x, H - 1); }
         for (int y = 0; y < H; y++) { Push(0, y); Push(W - 1, y); }
-        while (st.Count > 0)
-        {
-            int i = st.Pop(), x = i % W, y = i / W;
-            if (x > 0) Push(x - 1, y);
-            if (x < W - 1) Push(x + 1, y);
-            if (y > 0) Push(x, y - 1);
-            if (y < H - 1) Push(x, y + 1);
-        }
-        var m = new bool[W, H];
-        for (int y = 0; y < H; y++) for (int x = 0; x < W; x++) m[x, y] = !bg[y * W + x];
-        w = W; h = H;
-        return m;
+        while (st.Count > 0) { var (x, y) = st.Pop(); Push(x - 1, y); Push(x + 1, y); Push(x, y - 1); Push(x, y + 1); }
+        for (int x = 0; x < W; x++) for (int y = 0; y < H; y++) bg[x, y] = !bg[x, y];
+        return bg;
     }
 
     // Offset + penghalus: dilasi (offset + halus), lalu erosi (halus) = closing yang menutup lekukan sempit.

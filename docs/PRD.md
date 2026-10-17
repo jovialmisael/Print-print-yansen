@@ -67,7 +67,7 @@ Tahap sekarang: prototipe → cek kualitas → uji oleh operator. Status "produc
   - Penghalusan bentuk sebelum trace: blur dengan sigma = nilai Halus (3 lintasan box blur, mendekati Gaussian), lalu threshold. Lekukan kecil hilang. Halus 1–2 mm paling efektif; di atas 2 mm node bisa naik lagi.
   - Penjaga jarak: garis tidak pernah lebih dekat dari offset - 0,3 mm ke artwork. Garis die selalu membungkus garis kiss.
   - Hasil di app (kiss 2/1 mm, die 4/2 mm), node kiss/die sebelum -> sesudah: rough.jpg 64/43 -> 16/13 (-73%), lingkaran 11/10 -> 3/4 (-67%), logo.pdf 21/15 -> 8/7 (-58%), bintang 29/27 -> 15/17 (-43%), badge 9/8 -> 8/8. Sudut tajam 2 -> 0. Muat per desain 20-70 ms, stiker 300 mm ±1 detik (Release).
-  - Skenario uji S1–S10 beserta hasilnya: [UJI-GARIS-POTONG.md](UJI-GARIS-POTONG.md).
+  - Skenario uji S1–S11 beserta hasilnya: [UJI-GARIS-POTONG.md](UJI-GARIS-POTONG.md).
 - **Ditunda sampai ada kebutuhan nyata:** hapus latar foto dengan AI dan memperbesar gambar pecah. Untuk gambar pecah, cara tercepat tetap meminta file asli ke customer; angka dpi merah memberi tahu kapan perlu.
 - **Tidak dibangun:** hide copy, simpan proyek, reg mark buatan aplikasi, dan mode nametag/kartu.
 
@@ -83,7 +83,7 @@ Tahap sekarang: prototipe → cek kualitas → uji oleh operator. Status "produc
 - Jalur CDR lewat COM CorelDRAW belum diuji, karena CorelDRAW tidak terpasang di PC pengembangan.
 - PDF yang diputar (/Rotate) atau tidak bisa dibaca PDFsharp akan ditempel sebagai gambar (±254 dpi, RGB). Aplikasi memberi peringatan bila ini terjadi.
 - SVG di-export sebagai gambar ±300 dpi.
-- Hanya kontur luar yang dipotong. Lubang di bagian dalam desain tidak ikut dipotong.
+- Hanya kontur luar yang dipotong. Lubang di bagian dalam desain tidak ikut dipotong, termasuk lubang yang terbentuk saat offset menutup celah artwork (misalnya huruf C besar).
 - Nesting belum optimal (greedy).
 - Belum ada undo. Stiker belum bisa dipindah antar-lembar. Rotasi hanya kelipatan 90°.
 - Warna di layar hanya preview. Akurasi warna dijaga di file export.
@@ -121,4 +121,4 @@ Tahap sekarang: prototipe → cek kualitas → uji oleh operator. Status "produc
 - **Membuat zip untuk operator:** `dotnet publish StickerLayout -c Release -r win-x64 --self-contained -o publish\Printech`, lalu zip folder `publish\Printech`. Folder `publish/` tidak masuk git.
 - **Menjalankan aplikasi:** `dotnet run --project StickerLayout` (perlu .NET 10). File juga bisa dibuka sebagai argumen, misalnya lewat "Open with" atau dengan menyeret file ke ikon aplikasi.
 - **File contoh:** folder `samples/` (circle.png, star.jpg, badge.svg, logo.pdf, logo.ai, logo-on-blue.jpg untuk mencoba Rapikan, dan lainnya).
-- **Cek otomatis:** `StickerLayout\bin\Debug\net10.0-windows\StickerLayout.exe --selfcheck samples`. Hasilnya ditulis ke `samples/selfcheck.txt`. Skenario garis potong S1–S9 ikut dijalankan; satu saja gagal, exit code 1.
+- **Cek otomatis:** `StickerLayout\bin\Debug\net10.0-windows\StickerLayout.exe --selfcheck samples`. Hasilnya ditulis ke `samples/selfcheck.txt`. Skenario garis potong S1–S9 dan S11 ikut dijalankan; satu saja gagal, exit code 1.

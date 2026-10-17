@@ -6,11 +6,11 @@ Fitur yang diuji: tuning Potrace (tanpa sudut tajam), penghalusan bentuk lewat s
 - **Manual:** dikerjakan operator dengan CorelDRAW, Cutting Master 5, dan mesin Graphtec.
 - Pengaturan default: kiss offset 2 mm, halus 1 mm; die offset 4 mm, halus 2 mm.
 
-| ID | Skenario | Kriteria lulus | Cara | Hasil 2026-10-16 |
+| ID | Skenario | Kriteria lulus | Cara | Hasil 2026-10-17 |
 |---|---|---|---|---|
 | S1 | Logo JPG bertepi kasar (`rough.jpg`, 40 mm) | Node turun ≥60% dibanding Halus 0; tidak ada sudut tajam | Otomatis | Lulus: kiss 66 → 16 (−76%), die 45 → 13 (−71%) |
 | S2 | Lingkaran 40 mm | Maksimal 4 node; garis tetap bulat (selisih lebar dan tinggi < 0,3 mm); diameter 44 mm ± 0,5 | Otomatis | Lulus: 3 node, 44,03 × 44,02 mm |
-| S3 | Teks tebal "PRINTECH" 60 mm | Node lebih sedikit dari Halus 0; tidak ada sudut; huruf tidak terpotong (luas artwork di luar garis < 0,5 mm²) | Otomatis | Lulus: 47 → 20 node, 0,00 mm² |
+| S3 | Teks tebal "PRINTECH" 60 mm | Node lebih sedikit dari Halus 0; tidak ada sudut; huruf tidak terpotong (luas artwork di luar garis < 0,5 mm²) | Otomatis | Lulus: 43 → 20 node, 0,00 mm² |
 | S4 | Bintang dengan offset kecil 0,5 mm dan offset 0 | Garis tidak masuk artwork: luas di luar garis < 0,5 mm² (offset 0,5) dan < 3 mm² (offset 0, toleransi piksel) | Otomatis | Lulus: 0,00 dan 0,49 mm² |
 | S5 | Halus 0 / 0,5 / 1 / 2 / 4 mm pada logo kasar | Semua nilai jalan tanpa error; node selalu lebih sedikit dari Halus 0 | Otomatis | Lulus: 66 / 32 / 16 / 17 / 47 node (lihat catatan 1) |
 | S6 | Kiss selalu di dalam die, termasuk pengaturan tak biasa (kiss halus 3, die halus 0) | Luas kiss di luar die < 1 mm² | Otomatis | Lulus: 0,00 mm² pada 9 desain |
@@ -18,6 +18,7 @@ Fitur yang diuji: tuning Potrace (tanpa sudut tajam), penghalusan bentuk lewat s
 | S8 | Export PDF lalu dibuka di CorelDRAW | Otomatis: garis potong hanya berisi kurva (0 garis lurus) dan berwarna CMYK. Manual: klik tiap garis dengan Shape tool (F10), lihat jumlah node. Harapan untuk lebar 40 mm, nilai default: `circle.png` kiss 3, die 4; `rough.jpg` kiss 16, die 13. Selisih 1 node (titik awal/akhir) masih wajar | Otomatis + manual | Bagian otomatis lulus: 275 kurva, 0 garis lurus. Bagian CorelDRAW belum diuji |
 | S9 | Stiker besar 300 mm (gambar 3000 px), kiss + die | Dimuat < 5 detik di build Debug | Otomatis | Lulus: 2,0 detik (Debug), ±1 detik (Release) |
 | S10 | Potong fisik di Graphtec | Lihat langkah di bawah | Manual | Belum diuji |
+| S11 | Cincin "C" (celah 3 mm) dan 12 titik melingkar + lingkaran tengah. Offset menutup celah sehingga terbentuk lubang | Kiss dan die masing-masing tepat 1 kontur; lubang tidak ikut dipotong | Otomatis | Lulus: 1 / 1 kontur. Sebelum perbaikan: cincin 2 / 2, titik 3 / 1 |
 
 ## S10 — langkah potong fisik (operator)
 1. Siapkan `rough.jpg`, `circle.png`, dan 2–3 teks/logo customer yang biasa dipotong. File contoh ada di folder `samples/`, atau buat ulang dengan `StickerLayout.exe --selfcheck <folder>`.
